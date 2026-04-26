@@ -17,9 +17,10 @@ const FILTERS: FilterOption[] = ["all", "new", "learning", "reviewing", "mastere
 
 type Props = {
   learnerProfile: LearnerProfile;
+  onPracticePhrase: (phraseId: number) => void;
 };
 
-export default function LearnerLibrary({ learnerProfile }: Props) {
+export default function LearnerLibrary({ learnerProfile, onPracticePhrase }: Props) {
   const [sentDrafts, setSentDrafts] = useState<SentMessageDraft[]>([]);
   const [progressMap, setProgressMap] = useState<Record<number, LearnerPhraseProgress>>({});
   const [loading, setLoading] = useState(true);
@@ -183,20 +184,12 @@ export default function LearnerLibrary({ learnerProfile }: Props) {
                     </p>
                   </div>
 
-                  <div className="flex flex-col gap-2 min-w-[120px]">
+                  <div className="flex flex-col gap-2 min-w-[140px]">
                     <button
-                      disabled={isUpdating || status === "learning"}
-                      onClick={() => handleSetStatus(draft.phrase_id, "learning")}
-                      className="rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-40"
+                      onClick={() => onPracticePhrase(draft.phrase_id)}
+                      className="rounded-lg bg-slate-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-700"
                     >
-                      Learning
-                    </button>
-                    <button
-                      disabled={isUpdating || status === "mastered"}
-                      onClick={() => handleSetStatus(draft.phrase_id, "mastered")}
-                      className="rounded-lg bg-green-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-800 disabled:opacity-40"
-                    >
-                      Mastered
+                      Practise this
                     </button>
                     <button
                       disabled={isUpdating || status === "paused"}

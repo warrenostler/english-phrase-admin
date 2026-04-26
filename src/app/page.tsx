@@ -12,7 +12,7 @@ import Nav, { AppView } from "@/components/Nav";
 import AdminDashboard from "@/components/AdminDashboard";
 import LearnerDashboard from "@/components/LearnerDashboard";
 import LearnerLibrary from "@/components/LearnerLibrary";
-import LearnerReview from "@/components/LearnerReview";
+import LearnerStudySession from "@/components/LearnerStudySession";
 
 export default function Home() {
   const [email, setEmail] = useState("");
@@ -22,6 +22,7 @@ export default function Home() {
   const [role, setRole] = useState<UserRole | null>(null);
   const [learnerProfile, setLearnerProfile] = useState<LearnerProfile | null>(null);
   const [activeView, setActiveView] = useState<AppView>("admin");
+  const [practicePhraseId, setPracticePhraseId] = useState<number | null>(null);
 
   const [loading, setLoading] = useState(true);
   const [loginError, setLoginError] = useState("");
@@ -74,6 +75,12 @@ export default function Home() {
     setIsLoggedIn(false);
     setRole(null);
     setLearnerProfile(null);
+    setPracticePhraseId(null);
+  }
+
+  function openStudySession(phraseId?: number) {
+    setPracticePhraseId(phraseId ?? null);
+    setActiveView("learner-study");
   }
 
   if (loading) {
@@ -165,17 +172,27 @@ export default function Home() {
       {role === "learner" && learnerProfile && activeView === "learner-dashboard" && (
         <LearnerDashboard
           learnerProfile={learnerProfile}
+          onStartStudy={() => openStudySession()}
           onNavigateToLibrary={() => setActiveView("learner-library")}
-          onNavigateToReview={() => setActiveView("learner-review")}
         />
       )}
 
       {role === "learner" && learnerProfile && activeView === "learner-library" && (
-        <LearnerLibrary learnerProfile={learnerProfile} />
+        <LearnerLibrary
+          learnerProfile={learnerProfile}
+          onPracticePhrase={(phraseId) => openStudySession(phraseId)}
+        />
       )}
 
-      {role === "learner" && learnerProfile && activeView === "learner-review" && (
-        <LearnerReview learnerProfile={learnerProfile} />
+      {role === "learner" && learnerProfile && activeView === "learner-study" && (
+        <LearnerStudySession
+          learnerProfile={learnerProfile}
+          practicePhraseId={practicePhraseId}
+          onBackToDashboard={() => {
+            setPracticePhraseId(null);
+            setActiveView("learner-dashboard");
+          }}
+        />
       )}
     </div>
   );

@@ -2,7 +2,7 @@
 
 import { UserRole } from "@/lib/helpers";
 
-export type AppView = "admin" | "learner-dashboard" | "learner-library" | "learner-review";
+export type AppView = "admin" | "learner-dashboard" | "learner-library" | "learner-study";
 
 type NavProps = {
   role: UserRole;
@@ -51,10 +51,10 @@ export default function Nav({ role, activeView, onNavigate, onSignOut }: NavProp
               Library
             </button>
             <button
-              onClick={() => onNavigate("learner-review")}
-              className={linkClass("learner-review")}
+              onClick={() => onNavigate("learner-study")}
+              className={linkClass("learner-study")}
             >
-              Review
+              Study
             </button>
           </>
         )}

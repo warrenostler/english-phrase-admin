@@ -3,61 +3,54 @@
 import { useEffect, useState } from "react";
 import {
   LearnerProfile,
-  SentMessageDraft,
-  LearnerPhraseProgress,
-  loadSentDrafts,
-  loadLearnerProgress,
+  StudySummary,
+  loadLearnerStudySummary,
 } from "@/lib/helpers";
 
 type Props = {
   learnerProfile: LearnerProfile;
+  onStartStudy: () => void;
   onNavigateToLibrary: () => void;
-  onNavigateToReview: () => void;
 };
 
 export default function LearnerDashboard({
   learnerProfile,
+  onStartStudy,
   onNavigateToLibrary,
-  onNavigateToReview,
 }: Props) {
-  const [sentDrafts, setSentDrafts] = useState<SentMessageDraft[]>([]);
-  const [progress, setProgress] = useState<LearnerPhraseProgress[]>([]);
+  const [summary, setSummary] = useState<StudySummary>({
+    readyToPractice: 0,
+    newAvailable: 0,
+    reviewDue: 0,
+    mastered: 0,
+  });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    let isMounted = true;
+
     async function load() {
       setLoading(true);
-      const [drafts, prog] = await Promise.all([
-        loadSentDrafts(),
-        loadLearnerProgress(learnerProfile.id),
-      ]);
+      setError(null);
 
-      if (!drafts) {
-        setError("Failed to load phrases.");
-      } else {
-        setSentDrafts(drafts);
-      }
+      const data = await loadLearnerStudySummary(learnerProfile.id);
 
-      setProgress(prog);
+      if (!isMounted) return;
+      setSummary(data);
       setLoading(false);
     }
 
-    load();
+    load().catch((e: unknown) => {
+      if (!isMounted) return;
+      setError(e instanceof Error ? e.message : "Failed to load dashboard.");
+      setLoading(false);
+    });
+
+    return () => {
+      isMounted = false;
+    };
   }, [learnerProfile.id]);
-
-  const todaysDraft = sentDrafts[0] ?? null;
-
-  const now = new Date();
-  const dueCount = progress.filter(
-    (p) =>
-      ["new", "learning", "reviewing"].includes(p.status) &&
-      p.next_review_at != null &&
-      new Date(p.next_review_at) <= now
-  ).length;
-
-  const masteredCount = progress.filter((p) => p.status === "mastered").length;
-  const totalTracked = progress.length;
 
   if (loading) {
     return (
@@ -72,7 +65,7 @@ export default function LearnerDashboard({
       <h1 className="text-3xl font-semibold text-slate-900">
         Welcome back{learnerProfile.first_name ? `, ${learnerProfile.first_name}` : ""}!
       </h1>
-      <p className="mt-1 text-slate-600">Here&apos;s your English phrase progress.</p>
+      <p className="mt-1 text-slate-600">Ready for your next practice session?</p>
 
       {error && (
         <div className="mt-4 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
@@ -80,29 +73,31 @@ export default function LearnerDashboard({
         </div>
       )}
 
-      {/* Stats row */}
-      <div className="mt-8 grid grid-cols-2 gap-4 md:grid-cols-3">
+      <div className="mt-8 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+        <p className="text-sm text-slate-500">Phrases ready to practise</p>
+        <p className="mt-1 text-4xl font-bold text-slate-900">{summary.readyToPractice}</p>
+        <button
+          onClick={onStartStudy}
+          className="mt-4 rounded-lg bg-slate-900 px-5 py-2.5 text-sm font-medium text-white hover:bg-slate-700"
+        >
+          Start study session
+        </button>
+      </div>
+
+      <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-3">
         <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <p className="text-sm text-slate-500">Due for review</p>
-          <p className="mt-1 text-3xl font-bold text-slate-900">{dueCount}</p>
-          {dueCount > 0 && (
-            <button
-              onClick={onNavigateToReview}
-              className="mt-3 text-sm font-medium text-blue-600 hover:underline"
-            >
-              Start review →
-            </button>
-          )}
+          <p className="text-sm text-slate-500">New phrases available</p>
+          <p className="mt-1 text-3xl font-bold text-slate-900">{summary.newAvailable}</p>
         </div>
 
         <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <p className="text-sm text-slate-500">Mastered</p>
-          <p className="mt-1 text-3xl font-bold text-slate-900">{masteredCount}</p>
+          <p className="text-sm text-slate-500">Review phrases due</p>
+          <p className="mt-1 text-3xl font-bold text-slate-900">{summary.reviewDue}</p>
         </div>
 
         <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <p className="text-sm text-slate-500">Phrase bank</p>
-          <p className="mt-1 text-3xl font-bold text-slate-900">{totalTracked}</p>
+          <p className="text-sm text-slate-500">Mastered phrases</p>
+          <p className="mt-1 text-3xl font-bold text-slate-900">{summary.mastered}</p>
           <button
             onClick={onNavigateToLibrary}
             className="mt-3 text-sm font-medium text-blue-600 hover:underline"
@@ -110,43 +105,6 @@ export default function LearnerDashboard({
             View library →
           </button>
         </div>
-      </div>
-
-      {/* Today's phrase */}
-      <div className="mt-8">
-        <h2 className="text-lg font-semibold text-slate-900">Today&apos;s phrase</h2>
-
-        {todaysDraft ? (
-          <div className="mt-3 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-            <p className="text-xl font-semibold text-slate-900">{todaysDraft.phrase_text}</p>
-
-            <div className="mt-2 flex flex-wrap gap-2 text-sm">
-              {todaysDraft.phrase_category && (
-                <span className="rounded-full bg-slate-100 px-3 py-1 text-slate-700">
-                  {todaysDraft.phrase_category}
-                </span>
-              )}
-              {todaysDraft.phrase_level && (
-                <span className="rounded-full bg-slate-100 px-3 py-1 text-slate-700">
-                  {todaysDraft.phrase_level}
-                </span>
-              )}
-              {todaysDraft.phrase_rating != null && (
-                <span className="rounded-full bg-slate-100 px-3 py-1 text-slate-700">
-                  {todaysDraft.phrase_rating}/10
-                </span>
-              )}
-            </div>
-
-            <p className="mt-4 whitespace-pre-wrap text-sm leading-6 text-slate-700">
-              {todaysDraft.message_text}
-            </p>
-          </div>
-        ) : (
-          <div className="mt-3 rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-sm">
-            <p className="text-slate-600">No phrases sent yet.</p>
-          </div>
-        )}
       </div>
     </div>
   );
