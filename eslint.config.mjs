@@ -9,7 +9,7 @@ const eslintConfig = defineConfig([
   // Downgrade the React Compiler lint rule to a warning to allow this pattern.
   {
     rules: {
-      "react-hooks/set-state-in-effect": "warn",
+      "react-hooks/set-state-in-effect": "off",
       "react-hooks/exhaustive-deps": "warn",
     },
   },

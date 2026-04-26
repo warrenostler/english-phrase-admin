@@ -7,9 +7,8 @@ import {
   StudySessionItem,
   buildStudySession,
   checkGapFillAnswer,
-  checkTypeThePhraseAnswer,
-  getGapFillPrompt,
-  normalizeAnswer,
+  countApprovedPracticeItems,
+  getAcceptableAnswers,
   submitStudyResult,
 } from "@/lib/helpers";
 
@@ -19,17 +18,7 @@ type Props = {
   onBackToDashboard: () => void;
 };
 
-type ExerciseType = "gap-fill" | "type-the-phrase";
-type FeedbackState = "correct" | "almost" | "incorrect";
-
-function extractMeaningHint(messageText: string): string {
-  const firstLine = messageText
-    .split("\n")
-    .map((line) => line.trim())
-    .find(Boolean);
-
-  return firstLine?.slice(0, 180) ?? "Type the English phrase for this meaning.";
-}
+type FeedbackState = "correct" | "incorrect";
 
 export default function LearnerStudySession({
   learnerProfile,
@@ -39,6 +28,7 @@ export default function LearnerStudySession({
   const [items, setItems] = useState<StudySessionItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [approvedCount, setApprovedCount] = useState(0);
 
   const [index, setIndex] = useState(0);
   const [answer, setAnswer] = useState("");
@@ -57,9 +47,13 @@ export default function LearnerStudySession({
   const isDone = items.length > 0 && index >= items.length;
   const current = !isDone ? items[index] : null;
 
-  const exerciseType: ExerciseType = useMemo(
-    () => (index % 2 === 0 ? "gap-fill" : "type-the-phrase"),
-    [index]
+  const difficultyBadgeClass = useMemo(
+    () => ({
+      easy: "bg-green-100 text-green-700",
+      medium: "bg-amber-100 text-amber-700",
+      hard: "bg-rose-100 text-rose-700",
+    }),
+    []
   );
 
   useEffect(() => {
@@ -76,14 +70,14 @@ export default function LearnerStudySession({
       setResolvedResult(null);
       setSummary({ good: 0, hard: 0, again: 0 });
 
-      const session = await buildStudySession(
-        learnerProfile.id,
-        5,
-        practicePhraseId ?? undefined
-      );
+      const [session, approved] = await Promise.all([
+        buildStudySession(learnerProfile.id, 5, practicePhraseId ?? undefined),
+        countApprovedPracticeItems(),
+      ]);
 
       if (!isMounted) return;
       setItems(session);
+      setApprovedCount(approved);
       setLoading(false);
     }
 
@@ -106,8 +100,7 @@ export default function LearnerStudySession({
 
     const { error: submitError } = await submitStudyResult(
       learnerProfile.id,
-      current.draft.phrase_id,
-      current.draft.id,
+      current.practiceItem,
       result
     );
 
@@ -132,21 +125,11 @@ export default function LearnerStudySession({
   async function checkAnswer() {
     if (!current) return;
 
-    const phrase = current.draft.phrase_text;
-    const evaluation =
-      exerciseType === "gap-fill"
-        ? checkGapFillAnswer(answer, phrase)
-        : checkTypeThePhraseAnswer(answer, phrase);
+    const evaluation = checkGapFillAnswer(answer, current.practiceItem);
 
     if (evaluation === "correct") {
       const result: ReviewResult = attempts === 0 ? "good" : "hard";
       await resolveResult(result, "correct");
-      return;
-    }
-
-    if (evaluation === "almost") {
-      setFeedback("almost");
-      setAttempts((prev) => prev + 1);
       return;
     }
 
@@ -155,7 +138,7 @@ export default function LearnerStudySession({
   }
 
   async function showAnswer() {
-    await resolveResult("again", feedback ?? "incorrect");
+    await resolveResult("again", "incorrect");
   }
 
   function nextPhrase() {
@@ -186,13 +169,18 @@ export default function LearnerStudySession({
   }
 
   if (items.length === 0) {
+    let emptyMessage = "No study items due today";
+
+    if (approvedCount === 0) {
+      emptyMessage = "No approved practice items yet";
+    } else if (practicePhraseId != null) {
+      emptyMessage = "This phrase does not have approved exercises yet";
+    }
+
     return (
       <div className="mx-auto max-w-3xl p-6 md:p-10">
         <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center shadow-sm">
-          <h1 className="text-2xl font-semibold text-slate-900">No phrases ready right now</h1>
-          <p className="mt-2 text-slate-600">
-            You are all caught up. Check back later for new phrases or scheduled review.
-          </p>
+          <h1 className="text-2xl font-semibold text-slate-900">{emptyMessage}</h1>
           <button
             onClick={onBackToDashboard}
             className="mt-6 rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700"
@@ -238,12 +226,8 @@ export default function LearnerStudySession({
 
   if (!current) return null;
 
-  const phrase = current.draft.phrase_text;
-  const gapPrompt = getGapFillPrompt(phrase, current.draft.message_text);
-  const meaningHint = extractMeaningHint(current.draft.message_text);
-  const expectedAnswer = normalizeAnswer(phrase).startsWith("to ")
-    ? `${phrase} (or ${phrase.replace(/^to\s+/i, "")})`
-    : phrase;
+  const item = current.practiceItem;
+  const acceptableAnswers = getAcceptableAnswers(item);
 
   return (
     <div className="mx-auto max-w-3xl p-6 md:p-10">
@@ -256,32 +240,19 @@ export default function LearnerStudySession({
 
       <div className="mt-5 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
         <div className="flex flex-wrap items-center gap-2">
-          <p className="text-lg font-semibold text-slate-900">{phrase}</p>
-          {current.draft.phrase_category && (
-            <span className="rounded-full bg-slate-100 px-2 py-1 text-xs text-slate-700">
-              {current.draft.phrase_category}
-            </span>
-          )}
-          {current.draft.phrase_level && (
-            <span className="rounded-full bg-slate-100 px-2 py-1 text-xs text-slate-700">
-              {current.draft.phrase_level}
-            </span>
+          <span
+            className={`rounded-full px-2 py-1 text-xs font-medium capitalize ${difficultyBadgeClass[item.difficulty]}`}
+          >
+            {item.difficulty}
+          </span>
+          {item.italian_translation && (
+            <p className="text-sm text-slate-600">Italian: {item.italian_translation}</p>
           )}
         </div>
 
         <div className="mt-5 rounded-xl bg-slate-50 p-4">
-          {exerciseType === "gap-fill" ? (
-            <>
-              <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Gap-fill</p>
-              <p className="mt-2 text-slate-800">{gapPrompt}</p>
-            </>
-          ) : (
-            <>
-              <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Type the phrase</p>
-              <p className="mt-2 text-slate-800">Type the English phrase for this meaning:</p>
-              <p className="mt-2 text-sm text-slate-600">{meaningHint}</p>
-            </>
-          )}
+          <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Complete the sentence</p>
+          <p className="mt-2 whitespace-pre-wrap text-slate-800">{item.prompt}</p>
         </div>
 
         <div className="mt-4">
@@ -327,15 +298,29 @@ export default function LearnerStudySession({
         {feedback && (
           <div className="mt-5 rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm">
             <p className="font-medium text-slate-900">
-              {feedback === "correct" ? "Correct" : feedback === "almost" ? "Almost / Not quite" : "Not quite"}
+              {feedback === "correct" ? "Correct" : "Not quite"}
             </p>
-            <p className="mt-2 text-slate-700">Expected answer: {expectedAnswer}</p>
-            {resolvedResult && (
-              <p className="mt-1 text-xs uppercase tracking-wide text-slate-500">
-                Session result: {resolvedResult}
+            <p className="mt-2 text-slate-700">Correct answer: {item.correct_answer}</p>
+            <p className="mt-2 text-slate-700">Phrase: {item.phrase_text}</p>
+            {item.explanation && <p className="mt-2 text-slate-700">{item.explanation}</p>}
+            {item.hint && <p className="mt-2 text-slate-600">Hint: {item.hint}</p>}
+            {acceptableAnswers.length > 1 && (
+              <p className="mt-2 text-slate-600">
+                Also accepted: {acceptableAnswers.filter((a) => a !== item.correct_answer).join(", ")}
               </p>
             )}
-            <p className="mt-3 whitespace-pre-wrap text-slate-700">{current.draft.message_text}</p>
+            {resolvedResult && (
+              <p className="mt-2 text-xs uppercase tracking-wide text-slate-500">
+                Result recorded: {resolvedResult}
+              </p>
+            )}
+
+            {item.message_text && (
+              <details className="mt-3">
+                <summary className="cursor-pointer text-slate-700">Full teaching message</summary>
+                <p className="mt-2 whitespace-pre-wrap text-slate-700">{item.message_text}</p>
+              </details>
+            )}
           </div>
         )}
       </div>

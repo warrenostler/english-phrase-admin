@@ -6,6 +6,9 @@ import {
   SentMessageDraft,
   LearnerPhraseProgress,
   ProgressStatus,
+  PracticeDifficulty,
+  loadApprovedPracticeItems,
+  loadLearnerPracticeProgress,
   loadSentDrafts,
   loadLearnerProgress,
   upsertLearnerProgress,
@@ -23,19 +26,54 @@ type Props = {
 export default function LearnerLibrary({ learnerProfile, onPracticePhrase }: Props) {
   const [sentDrafts, setSentDrafts] = useState<SentMessageDraft[]>([]);
   const [progressMap, setProgressMap] = useState<Record<number, LearnerPhraseProgress>>({});
+  const [difficultiesByPhrase, setDifficultiesByPhrase] = useState<Record<number, PracticeDifficulty[]>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<FilterOption>("all");
   const [actionLoading, setActionLoading] = useState<number | null>(null);
 
   async function load() {
-    const [drafts, prog] = await Promise.all([
+    const [drafts, prog, items, practiceProgress] = await Promise.all([
       loadSentDrafts(),
       loadLearnerProgress(learnerProfile.id),
+      loadApprovedPracticeItems(),
+      loadLearnerPracticeProgress(learnerProfile.id),
     ]);
 
     setSentDrafts(drafts);
     setProgressMap(Object.fromEntries(prog.map((p) => [p.phrase_id, p])));
+
+    const grouped: Record<number, PracticeDifficulty[]> = {};
+    for (const item of items) {
+      const list = grouped[item.phrase_id] ?? [];
+      if (!list.includes(item.difficulty)) {
+        list.push(item.difficulty);
+      }
+      grouped[item.phrase_id] = list;
+    }
+    setDifficultiesByPhrase(grouped);
+
+    const pausedByPractice = new Set(
+      practiceProgress
+        .filter((p) => p.status === "paused")
+        .map((p) => p.practice_item_id)
+    );
+
+    if (pausedByPractice.size > 0) {
+      // If any approved practice item for a phrase is paused, reflect paused status for browsing.
+      setProgressMap((current) => {
+        const next = { ...current };
+        for (const item of items) {
+          if (!pausedByPractice.has(item.id)) continue;
+          const existing = next[item.phrase_id];
+          if (existing) {
+            next[item.phrase_id] = { ...existing, status: "paused" };
+          }
+        }
+        return next;
+      });
+    }
+
     setError(null);
     setLoading(false);
   }
@@ -68,6 +106,7 @@ export default function LearnerLibrary({ learnerProfile, onPracticePhrase }: Pro
             learner_id: learnerProfile.id,
             phrase_id: phraseId,
             status,
+            current_difficulty: null,
             ease_score: null,
             next_review_at: now,
             last_reviewed_at: null,
@@ -175,6 +214,29 @@ export default function LearnerLibrary({ learnerProfile, onPracticePhrase }: Pro
                       {draft.phrase_rating != null && (
                         <span className="rounded-full bg-slate-100 px-3 py-1 text-slate-600">
                           {draft.phrase_rating}/10
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="mt-2 flex flex-wrap gap-2 text-xs">
+                      {(difficultiesByPhrase[draft.phrase_id] ?? []).length > 0 ? (
+                        (difficultiesByPhrase[draft.phrase_id] ?? []).map((difficulty) => (
+                          <span
+                            key={difficulty}
+                            className="rounded-full bg-slate-100 px-2 py-1 text-slate-600 capitalize"
+                          >
+                            {difficulty}
+                          </span>
+                        ))
+                      ) : (
+                        <span className="rounded-full bg-slate-100 px-2 py-1 text-slate-600">
+                          No approved exercises
+                        </span>
+                      )}
+
+                      {progressMap[draft.phrase_id]?.current_difficulty && (
+                        <span className="rounded-full bg-blue-100 px-2 py-1 text-blue-700 capitalize">
+                          Current: {progressMap[draft.phrase_id].current_difficulty}
                         </span>
                       )}
                     </div>

@@ -1,7 +1,5 @@
 import { supabase } from "@/lib/supabaseClient";
 
-// ─── Types ───────────────────────────────────────────────────────────────────
-
 export type UserRole = "admin" | "learner" | "none";
 
 export type LearnerProfile = {
@@ -31,6 +29,7 @@ export type LearnerPhraseProgress = {
   learner_id: string;
   phrase_id: number;
   status: ProgressStatus;
+  current_difficulty: "easy" | "medium" | "hard" | null;
   ease_score: number | null;
   next_review_at: string | null;
   last_reviewed_at: string | null;
@@ -41,10 +40,46 @@ export type LearnerPhraseProgress = {
 };
 
 export type ReviewResult = "again" | "hard" | "good" | "easy";
+export type PracticeDifficulty = "easy" | "medium" | "hard";
+
+export type PracticeItem = {
+  id: number;
+  phrase_id: number;
+  message_draft_id: number | null;
+  exercise_type: string;
+  difficulty: PracticeDifficulty;
+  italian_translation: string | null;
+  prompt: string;
+  correct_answer: string;
+  acceptable_answers: unknown;
+  hint: string | null;
+  explanation: string | null;
+  status: string;
+  created_at: string;
+  phrase_text: string;
+  phrase_category: string | null;
+  phrase_level: string | null;
+  message_text: string | null;
+};
+
+export type LearnerPracticeItemProgress = {
+  id: number;
+  learner_id: string;
+  practice_item_id: number;
+  status: ProgressStatus;
+  times_seen: number;
+  times_correct: number;
+  consecutive_correct: number;
+  last_result: ReviewResult | null;
+  last_reviewed_at: string | null;
+  next_review_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
 
 export type StudySessionItem = {
-  draft: SentMessageDraft;
-  progress: LearnerPhraseProgress | null;
+  practiceItem: PracticeItem;
+  practiceProgress: LearnerPracticeItemProgress | null;
 };
 
 export type StudySummary = {
@@ -54,10 +89,12 @@ export type StudySummary = {
   mastered: number;
 };
 
-// ─── Role helpers ─────────────────────────────────────────────────────────────
+function toDifficulty(value: string | null | undefined): PracticeDifficulty {
+  if (value === "medium" || value === "hard") return value;
+  return "easy";
+}
 
 export async function loadUserRole(email: string, userId: string): Promise<UserRole> {
-  // admin_users may use id (linked to auth.users) or email — try both
   const [adminByIdResult, adminByEmailResult, learnerResult] = await Promise.all([
     supabase.from("admin_users").select("id").eq("id", userId).maybeSingle(),
     supabase.from("admin_users").select("id").eq("email", email).maybeSingle(),
@@ -72,8 +109,6 @@ export async function loadUserRole(email: string, userId: string): Promise<UserR
   return "none";
 }
 
-// ─── Learner profile ──────────────────────────────────────────────────────────
-
 export async function loadLearnerProfile(userId: string): Promise<LearnerProfile | null> {
   const { data, error } = await supabase
     .from("learner_profiles")
@@ -84,8 +119,6 @@ export async function loadLearnerProfile(userId: string): Promise<LearnerProfile
   if (error || !data) return null;
   return data as LearnerProfile;
 }
-
-// ─── Sent message drafts ──────────────────────────────────────────────────────
 
 export async function loadSentDrafts(): Promise<SentMessageDraft[]> {
   const { data: drafts, error: draftsError } = await supabase
@@ -103,13 +136,15 @@ export async function loadSentDrafts(): Promise<SentMessageDraft[]> {
     .select("id, phrase, category, level, rating")
     .in("id", phraseIds);
 
-  const phraseMap: Record<number, { phrase: string; category: string | null; level: string | null; rating: number | null }> =
-    Object.fromEntries(
-      (phraseRows ?? []).map((p) => [
-        p.id,
-        { phrase: p.phrase, category: p.category, level: p.level, rating: p.rating },
-      ])
-    );
+  const phraseMap: Record<
+    number,
+    { phrase: string; category: string | null; level: string | null; rating: number | null }
+  > = Object.fromEntries(
+    (phraseRows ?? []).map((p) => [
+      p.id,
+      { phrase: p.phrase, category: p.category, level: p.level, rating: p.rating },
+    ])
+  );
 
   return drafts.map((d) => ({
     id: d.id,
@@ -122,8 +157,6 @@ export async function loadSentDrafts(): Promise<SentMessageDraft[]> {
     created_at: d.created_at,
   }));
 }
-
-// ─── Learner phrase progress ──────────────────────────────────────────────────
 
 export async function loadLearnerProgress(learnerId: string): Promise<LearnerPhraseProgress[]> {
   const { data, error } = await supabase
@@ -144,183 +177,98 @@ export async function upsertLearnerProgress(
 
   const { data: existing } = await supabase
     .from("learner_phrase_progress")
-    .select("id, times_seen, times_correct")
+    .select("id, times_seen, times_correct, next_review_at, last_reviewed_at, created_at")
     .eq("learner_id", learnerId)
     .eq("phrase_id", phraseId)
     .maybeSingle();
 
-  if (existing) {
-    const { error } = await supabase
-      .from("learner_phrase_progress")
-      .update({ status, updated_at: now })
-      .eq("id", existing.id);
-    return { error: error?.message ?? null };
-  } else {
-    const { error } = await supabase.from("learner_phrase_progress").insert({
-      learner_id: learnerId,
-      phrase_id: phraseId,
-      status,
-      next_review_at: now,
-      times_seen: 0,
-      times_correct: 0,
-      created_at: now,
-      updated_at: now,
-    });
-    return { error: error?.message ?? null };
-  }
-}
-
-// ─── Review ───────────────────────────────────────────────────────────────────
-
-function getNextReviewAt(result: ReviewResult): string {
-  const now = new Date();
-  const daysMap: Record<ReviewResult, number> = {
-    again: 1,
-    hard: 3,
-    good: 7,
-    easy: 30,
+  const payload = {
+    learner_id: learnerId,
+    phrase_id: phraseId,
+    status,
+    next_review_at: existing?.next_review_at ?? now,
+    last_reviewed_at: existing?.last_reviewed_at ?? null,
+    times_seen: existing?.times_seen ?? 0,
+    times_correct: existing?.times_correct ?? 0,
+    updated_at: now,
+    created_at: existing?.created_at ?? now,
   };
-  now.setDate(now.getDate() + daysMap[result]);
-  return now.toISOString();
+
+  const { error } = await supabase
+    .from("learner_phrase_progress")
+    .upsert(payload, { onConflict: "learner_id,phrase_id" });
+
+  return { error: error?.message ?? null };
 }
 
-function getNextStatus(result: ReviewResult): ProgressStatus {
-  if (result === "again" || result === "hard") return "learning";
-  if (result === "good") return "reviewing";
-  return "mastered";
-}
+export async function loadApprovedPracticeItems(): Promise<PracticeItem[]> {
+  const { data: rows, error } = await supabase
+    .from("practice_items")
+    .select(
+      "id, phrase_id, message_draft_id, exercise_type, difficulty, italian_translation, prompt, correct_answer, acceptable_answers, hint, explanation, status, created_at"
+    )
+    .eq("status", "approved")
+    .eq("exercise_type", "sentence_gap_fill")
+    .order("created_at", { ascending: false });
 
-export async function submitReviewResult(
-  learnerId: string,
-  phraseId: number,
-  messageDraftId: number,
-  progressId: number,
-  currentTimesSeen: number,
-  currentTimesCorrect: number,
-  result: ReviewResult
-): Promise<{ error: string | null }> {
-  const now = new Date().toISOString();
-  const nextReviewAt = getNextReviewAt(result);
-  const newStatus = getNextStatus(result);
-  const isCorrect = result === "good" || result === "easy";
+  if (error || !rows || rows.length === 0) return [];
 
-  const [reviewInsert, progressUpdate] = await Promise.all([
-    supabase.from("review_events").insert({
-      learner_id: learnerId,
-      phrase_id: phraseId,
-      message_draft_id: messageDraftId,
-      result,
-      reviewed_at: now,
-      next_review_at: nextReviewAt,
-    }),
-    supabase
-      .from("learner_phrase_progress")
-      .update({
-        status: newStatus,
-        last_reviewed_at: now,
-        times_seen: currentTimesSeen + 1,
-        times_correct: isCorrect ? currentTimesCorrect + 1 : currentTimesCorrect,
-        next_review_at: nextReviewAt,
-        updated_at: now,
-      })
-      .eq("id", progressId),
+  const phraseIds = Array.from(new Set(rows.map((r) => r.phrase_id)));
+  const messageDraftIds = Array.from(
+    new Set(rows.map((r) => r.message_draft_id).filter((id): id is number => !!id))
+  );
+
+  const [phraseRes, messageRes] = await Promise.all([
+    phraseIds.length > 0
+      ? supabase.from("phrases").select("id, phrase, category, level").in("id", phraseIds)
+      : Promise.resolve({ data: [], error: null }),
+    messageDraftIds.length > 0
+      ? supabase.from("message_drafts").select("id, message_text").in("id", messageDraftIds)
+      : Promise.resolve({ data: [], error: null }),
   ]);
 
-  if (reviewInsert.error) return { error: reviewInsert.error.message };
-  if (progressUpdate.error) return { error: progressUpdate.error.message };
-  return { error: null };
+  const phraseMap = Object.fromEntries(
+    (phraseRes.data ?? []).map((p) => [p.id, p])
+  ) as Record<number, { id: number; phrase: string; category: string | null; level: string | null }>;
+
+  const messageMap = Object.fromEntries(
+    (messageRes.data ?? []).map((m) => [m.id, m.message_text])
+  ) as Record<number, string>;
+
+  return rows.map((row) => ({
+    id: row.id,
+    phrase_id: row.phrase_id,
+    message_draft_id: row.message_draft_id,
+    exercise_type: row.exercise_type,
+    difficulty: toDifficulty(row.difficulty),
+    italian_translation: row.italian_translation,
+    prompt: row.prompt,
+    correct_answer: row.correct_answer,
+    acceptable_answers: row.acceptable_answers,
+    hint: row.hint,
+    explanation: row.explanation,
+    status: row.status,
+    created_at: row.created_at,
+    phrase_text: phraseMap[row.phrase_id]?.phrase ?? "Unknown phrase",
+    phrase_category: phraseMap[row.phrase_id]?.category ?? null,
+    phrase_level: phraseMap[row.phrase_id]?.level ?? null,
+    message_text: row.message_draft_id ? messageMap[row.message_draft_id] ?? null : null,
+  }));
 }
 
-export function normalizeAnswer(input: string): string {
-  return input
-    .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
+export async function loadLearnerPracticeProgress(
+  learnerId: string
+): Promise<LearnerPracticeItemProgress[]> {
+  const { data, error } = await supabase
+    .from("learner_practice_item_progress")
+    .select("*")
+    .eq("learner_id", learnerId);
+
+  if (error || !data) return [];
+  return data as LearnerPracticeItemProgress[];
 }
 
-function withoutLeadingTo(input: string): string {
-  return input.replace(/^to\s+/, "").trim();
-}
-
-function getPhraseChunks(phrase: string): string[] {
-  const normalized = normalizeAnswer(withoutLeadingTo(phrase));
-  const words = normalized.split(" ").filter(Boolean);
-
-  if (words.length === 0) return [];
-
-  const chunks = new Set<string>();
-  chunks.add(normalized);
-
-  if (words.length >= 2) {
-    chunks.add(words.slice(-2).join(" "));
-  }
-  if (words.length >= 3) {
-    chunks.add(words.slice(-3).join(" "));
-  }
-
-  return Array.from(chunks);
-}
-
-export function checkTypeThePhraseAnswer(answer: string, phrase: string): "correct" | "almost" | "incorrect" {
-  const normalizedAnswer = normalizeAnswer(answer);
-  const normalizedPhrase = normalizeAnswer(phrase);
-  const phraseWithoutTo = normalizeAnswer(withoutLeadingTo(phrase));
-
-  if (!normalizedAnswer) return "incorrect";
-
-  if (normalizedAnswer === normalizedPhrase || normalizedAnswer === phraseWithoutTo) {
-    return "correct";
-  }
-
-  if (
-    normalizedAnswer.includes(phraseWithoutTo) ||
-    phraseWithoutTo.includes(normalizedAnswer)
-  ) {
-    return "almost";
-  }
-
-  return "incorrect";
-}
-
-export function checkGapFillAnswer(answer: string, phrase: string): "correct" | "almost" | "incorrect" {
-  const normalizedAnswer = normalizeAnswer(answer);
-  const normalizedPhrase = normalizeAnswer(phrase);
-  const phraseWithoutTo = normalizeAnswer(withoutLeadingTo(phrase));
-  const chunks = getPhraseChunks(phrase);
-
-  if (!normalizedAnswer) return "incorrect";
-
-  if (
-    normalizedAnswer === normalizedPhrase ||
-    normalizedAnswer === phraseWithoutTo ||
-    chunks.includes(normalizedAnswer)
-  ) {
-    return "correct";
-  }
-
-  if (
-    chunks.some((chunk) => normalizedAnswer.includes(chunk) || chunk.includes(normalizedAnswer))
-  ) {
-    return "almost";
-  }
-
-  return "incorrect";
-}
-
-export function getGapFillPrompt(phrase: string, messageText: string): string {
-  const escapedPhrase = phrase.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const phrasePattern = new RegExp(escapedPhrase, "i");
-
-  if (phrasePattern.test(messageText)) {
-    return messageText.replace(phrasePattern, "______");
-  }
-
-  const noTo = withoutLeadingTo(phrase);
-  return `Complete the sentence: I often ______ when I talk with friends. (${noTo})`;
-}
-
-function isDueForReview(progress: LearnerPhraseProgress, now: Date): boolean {
+function isDuePracticeProgress(progress: LearnerPracticeItemProgress, now: Date): boolean {
   if (progress.status === "paused") return false;
   if (progress.status === "mastered") return false;
   if (!["new", "learning", "reviewing"].includes(progress.status)) return false;
@@ -328,36 +276,94 @@ function isDueForReview(progress: LearnerPhraseProgress, now: Date): boolean {
   return new Date(progress.next_review_at) <= now;
 }
 
-export async function loadLearnerStudySummary(learnerId: string): Promise<StudySummary> {
-  const [drafts, progress] = await Promise.all([
-    loadSentDrafts(),
-    loadLearnerProgress(learnerId),
-  ]);
+function getPhraseConsecutive(
+  phraseItems: PracticeItem[],
+  progressByItemId: Map<number, LearnerPracticeItemProgress>,
+  difficulty: PracticeDifficulty
+): number {
+  const matchingItems = phraseItems.filter((item) => item.difficulty === difficulty);
+  let best = 0;
 
-  const progressMap = new Map(progress.map((p) => [p.phrase_id, p]));
-  const now = new Date();
-
-  let newAvailable = 0;
-  let reviewDue = 0;
-
-  for (const draft of drafts) {
-    const p = progressMap.get(draft.phrase_id);
-    if (!p) {
-      newAvailable += 1;
-      continue;
-    }
-
-    if (isDueForReview(p, now)) {
-      reviewDue += 1;
+  for (const item of matchingItems) {
+    const prog = progressByItemId.get(item.id);
+    if (prog && prog.consecutive_correct > best) {
+      best = prog.consecutive_correct;
     }
   }
 
-  const mastered = progress.filter((p) => p.status === "mastered").length;
+  return best;
+}
+
+function isDifficultyUnlocked(
+  phraseItems: PracticeItem[],
+  progressByItemId: Map<number, LearnerPracticeItemProgress>,
+  difficulty: PracticeDifficulty
+): boolean {
+  const easyConsecutive = getPhraseConsecutive(phraseItems, progressByItemId, "easy");
+  const mediumConsecutive = getPhraseConsecutive(phraseItems, progressByItemId, "medium");
+
+  if (difficulty === "easy") return true;
+  if (difficulty === "medium") return easyConsecutive >= 2;
+  return mediumConsecutive >= 2;
+}
+
+function getNextDifficultyForPhrase(
+  phraseItems: PracticeItem[],
+  progressByItemId: Map<number, LearnerPracticeItemProgress>
+): PracticeDifficulty {
+  const easyConsecutive = getPhraseConsecutive(phraseItems, progressByItemId, "easy");
+  if (easyConsecutive < 2) return "easy";
+
+  const mediumConsecutive = getPhraseConsecutive(phraseItems, progressByItemId, "medium");
+  if (mediumConsecutive < 2) return "medium";
+
+  return "hard";
+}
+
+export async function loadLearnerStudySummary(learnerId: string): Promise<StudySummary> {
+  const [items, progress, phraseProgress] = await Promise.all([
+    loadApprovedPracticeItems(),
+    loadLearnerPracticeProgress(learnerId),
+    loadLearnerProgress(learnerId),
+  ]);
+
+  const now = new Date();
+  const progressByItemId = new Map(progress.map((p) => [p.practice_item_id, p]));
+  const itemsByPhrase = new Map<number, PracticeItem[]>();
+
+  for (const item of items) {
+    const list = itemsByPhrase.get(item.phrase_id) ?? [];
+    list.push(item);
+    itemsByPhrase.set(item.phrase_id, list);
+  }
+
+  let dueCount = 0;
+  const approvedItemIds = new Set(items.map((i) => i.id));
+  for (const p of progress) {
+    if (!approvedItemIds.has(p.practice_item_id)) continue;
+    if (isDuePracticeProgress(p, now)) dueCount += 1;
+  }
+
+  let newCount = 0;
+  for (const item of items) {
+    const hasProgress = progressByItemId.has(item.id);
+    if (hasProgress) continue;
+
+    const phraseItems = itemsByPhrase.get(item.phrase_id) ?? [];
+    if (!isDifficultyUnlocked(phraseItems, progressByItemId, item.difficulty)) continue;
+    if (item.difficulty !== getNextDifficultyForPhrase(phraseItems, progressByItemId)) continue;
+
+    if (item.difficulty === "easy") {
+      newCount += 1;
+    }
+  }
+
+  const mastered = phraseProgress.filter((p) => p.status === "mastered").length;
 
   return {
-    readyToPractice: reviewDue + newAvailable,
-    newAvailable,
-    reviewDue,
+    readyToPractice: dueCount + newCount,
+    newAvailable: newCount,
+    reviewDue: dueCount,
     mastered,
   };
 }
@@ -367,114 +373,278 @@ export async function buildStudySession(
   maxItems = 5,
   phraseId?: number
 ): Promise<StudySessionItem[]> {
-  const [drafts, progress] = await Promise.all([
-    loadSentDrafts(),
-    loadLearnerProgress(learnerId),
+  const [items, progress] = await Promise.all([
+    loadApprovedPracticeItems(),
+    loadLearnerPracticeProgress(learnerId),
   ]);
 
-  const progressMap = new Map(progress.map((p) => [p.phrase_id, p]));
   const now = new Date();
+  const itemById = new Map(items.map((item) => [item.id, item]));
+  const progressByItemId = new Map(progress.map((p) => [p.practice_item_id, p]));
 
-  if (phraseId != null) {
-    const matched = drafts.find((d) => d.phrase_id === phraseId);
-    if (!matched) return [];
-    const matchedProgress = progressMap.get(matched.phrase_id) ?? null;
-    if (matchedProgress?.status === "paused") return [];
-    return [{ draft: matched, progress: matchedProgress }];
+  const itemsByPhrase = new Map<number, PracticeItem[]>();
+  for (const item of items) {
+    const list = itemsByPhrase.get(item.phrase_id) ?? [];
+    list.push(item);
+    itemsByPhrase.set(item.phrase_id, list);
   }
 
-  const dueReview: StudySessionItem[] = [];
-  const newPhrases: StudySessionItem[] = [];
+  const due: StudySessionItem[] = [];
+  for (const prog of progress) {
+    if (!isDuePracticeProgress(prog, now)) continue;
+    const item = itemById.get(prog.practice_item_id);
+    if (!item) continue;
 
-  for (const draft of drafts) {
-    const p = progressMap.get(draft.phrase_id) ?? null;
+    if (phraseId != null && item.phrase_id !== phraseId) continue;
 
+    due.push({
+      practiceItem: item,
+      practiceProgress: prog,
+    });
+  }
+
+  const dueIds = new Set(due.map((d) => d.practiceItem.id));
+
+  const fresh: StudySessionItem[] = [];
+  for (const item of items) {
+    if (dueIds.has(item.id)) continue;
+    if (phraseId != null && item.phrase_id !== phraseId) continue;
+
+    const p = progressByItemId.get(item.id);
     if (p?.status === "paused") continue;
-    if (p?.status === "mastered") continue;
+    if (p) continue;
 
-    if (!p) {
-      newPhrases.push({ draft, progress: null });
-      continue;
-    }
+    const phraseItems = itemsByPhrase.get(item.phrase_id) ?? [];
+    const unlocked = isDifficultyUnlocked(phraseItems, progressByItemId, item.difficulty);
+    if (!unlocked) continue;
 
-    if (isDueForReview(p, now)) {
-      dueReview.push({ draft, progress: p });
-    }
+    const nextDifficulty = getNextDifficultyForPhrase(phraseItems, progressByItemId);
+    if (item.difficulty !== nextDifficulty) continue;
+
+    fresh.push({
+      practiceItem: item,
+      practiceProgress: null,
+    });
   }
 
-  return [...dueReview, ...newPhrases].slice(0, maxItems);
+  return [...due, ...fresh].slice(0, maxItems);
 }
 
-function getNextSchedule(result: ReviewResult): { status: ProgressStatus; nextReviewAt: string } {
+export async function selectNextPracticeItemForPhrase(
+  learnerId: string,
+  phraseId: number
+): Promise<PracticeItem | null> {
+  const session = await buildStudySession(learnerId, 1, phraseId);
+  return session[0]?.practiceItem ?? null;
+}
+
+export async function countApprovedPracticeItems(): Promise<number> {
+  const { count } = await supabase
+    .from("practice_items")
+    .select("id", { count: "exact", head: true })
+    .eq("status", "approved")
+    .eq("exercise_type", "sentence_gap_fill");
+  return count ?? 0;
+}
+
+function addDays(days: number): string {
   const now = new Date();
-  const dayMap: Record<ReviewResult, number> = {
-    again: 1,
-    hard: 3,
-    good: 7,
-    easy: 30,
-  };
+  now.setDate(now.getDate() + days);
+  return now.toISOString();
+}
 
-  now.setDate(now.getDate() + dayMap[result]);
+function resultToSchedule(result: ReviewResult): { status: ProgressStatus; nextReviewAt: string } {
+  if (result === "again") return { status: "learning", nextReviewAt: addDays(1) };
+  if (result === "hard") return { status: "learning", nextReviewAt: addDays(3) };
+  if (result === "good") return { status: "reviewing", nextReviewAt: addDays(7) };
+  return { status: "mastered", nextReviewAt: addDays(30) };
+}
 
-  let status: ProgressStatus = "learning";
-  if (result === "good") status = "reviewing";
-  if (result === "easy") status = "mastered";
-
-  return { status, nextReviewAt: now.toISOString() };
+function parseMaybeNumber(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : 0;
 }
 
 export async function submitStudyResult(
   learnerId: string,
-  phraseId: number,
-  messageDraftId: number,
+  item: PracticeItem,
   result: ReviewResult
 ): Promise<{ error: string | null }> {
   const now = new Date().toISOString();
-  const { status, nextReviewAt } = getNextSchedule(result);
+  const { status, nextReviewAt } = resultToSchedule(result);
 
-  const { data: existing, error: existingError } = await supabase
-    .from("learner_phrase_progress")
-    .select("id, times_seen, times_correct, created_at")
+  const { data: existingProgress, error: progressFetchError } = await supabase
+    .from("learner_practice_item_progress")
+    .select("id, times_seen, times_correct, consecutive_correct, created_at")
     .eq("learner_id", learnerId)
-    .eq("phrase_id", phraseId)
+    .eq("practice_item_id", item.id)
     .maybeSingle();
 
-  if (existingError) {
-    return { error: existingError.message };
-  }
+  if (progressFetchError) return { error: progressFetchError.message };
 
-  const currentTimesSeen = existing?.times_seen ?? 0;
-  const currentTimesCorrect = existing?.times_correct ?? 0;
-  const isCorrect = result === "good" || result === "easy";
+  const isCorrectOutcome = result === "good" || result === "hard" || result === "easy";
+  const currentTimesSeen = parseMaybeNumber(existingProgress?.times_seen);
+  const currentTimesCorrect = parseMaybeNumber(existingProgress?.times_correct);
+  const currentConsecutive = parseMaybeNumber(existingProgress?.consecutive_correct);
+
+  const nextConsecutive =
+    result === "again" ? 0 : currentConsecutive + 1;
 
   const progressPayload = {
     learner_id: learnerId,
-    phrase_id: phraseId,
+    practice_item_id: item.id,
     status,
-    next_review_at: nextReviewAt,
-    last_reviewed_at: now,
     times_seen: currentTimesSeen + 1,
-    times_correct: isCorrect ? currentTimesCorrect + 1 : currentTimesCorrect,
+    times_correct: isCorrectOutcome ? currentTimesCorrect + 1 : currentTimesCorrect,
+    consecutive_correct: nextConsecutive,
+    last_result: result,
+    last_reviewed_at: now,
+    next_review_at: nextReviewAt,
     updated_at: now,
-    created_at: existing?.created_at ?? now,
+    created_at: existingProgress?.created_at ?? now,
   };
 
-  const [progressUpsert, reviewInsert] = await Promise.all([
+  const { error: progressError } = await supabase
+    .from("learner_practice_item_progress")
+    .upsert(progressPayload, { onConflict: "learner_id,practice_item_id" });
+
+  if (progressError) return { error: progressError.message };
+
+  const { error: eventError } = await supabase.from("review_events").insert({
+    learner_id: learnerId,
+    phrase_id: item.phrase_id,
+    practice_item_id: item.id,
+    message_draft_id: item.message_draft_id,
+    result,
+    reviewed_at: now,
+    next_review_at: nextReviewAt,
+  });
+
+  if (eventError) return { error: eventError.message };
+
+  const [allPhraseItems, allProgressRows, existingPhraseProgressRes] = await Promise.all([
+    loadApprovedPracticeItems(),
+    loadLearnerPracticeProgress(learnerId),
     supabase
       .from("learner_phrase_progress")
-      .upsert(progressPayload, { onConflict: "learner_id,phrase_id" }),
-    supabase.from("review_events").insert({
-      learner_id: learnerId,
-      phrase_id: phraseId,
-      message_draft_id: messageDraftId,
-      result,
-      reviewed_at: now,
-      next_review_at: nextReviewAt,
-    }),
+      .select("id, times_seen, times_correct, created_at")
+      .eq("learner_id", learnerId)
+      .eq("phrase_id", item.phrase_id)
+      .maybeSingle(),
   ]);
 
-  if (progressUpsert.error) return { error: progressUpsert.error.message };
-  if (reviewInsert.error) return { error: reviewInsert.error.message };
+  if (existingPhraseProgressRes.error) return { error: existingPhraseProgressRes.error.message };
+
+  const phraseItems = allPhraseItems.filter((p) => p.phrase_id === item.phrase_id);
+  const progressMap = new Map(allProgressRows.map((p) => [p.practice_item_id, p]));
+
+  const easyConsecutive = getPhraseConsecutive(phraseItems, progressMap, "easy");
+  const mediumConsecutive = getPhraseConsecutive(phraseItems, progressMap, "medium");
+  const hardConsecutive = getPhraseConsecutive(phraseItems, progressMap, "hard");
+
+  const phraseStatus: ProgressStatus =
+    hardConsecutive >= 3
+      ? "mastered"
+      : (easyConsecutive >= 2 || mediumConsecutive >= 1 || hardConsecutive >= 1)
+      ? "reviewing"
+      : "learning";
+
+  const currentDifficulty: PracticeDifficulty =
+    easyConsecutive < 2 ? "easy" : mediumConsecutive < 2 ? "medium" : "hard";
+
+  const phraseTimesSeen = parseMaybeNumber(existingPhraseProgressRes.data?.times_seen);
+  const phraseTimesCorrect = parseMaybeNumber(existingPhraseProgressRes.data?.times_correct);
+
+  const phrasePayload = {
+    learner_id: learnerId,
+    phrase_id: item.phrase_id,
+    status: phraseStatus,
+    current_difficulty: currentDifficulty,
+    next_review_at: nextReviewAt,
+    last_reviewed_at: now,
+    times_seen: phraseTimesSeen + 1,
+    times_correct: isCorrectOutcome ? phraseTimesCorrect + 1 : phraseTimesCorrect,
+    updated_at: now,
+    created_at: existingPhraseProgressRes.data?.created_at ?? now,
+  };
+
+  const { error: phraseError } = await supabase
+    .from("learner_phrase_progress")
+    .upsert(phrasePayload, { onConflict: "learner_id,phrase_id" });
+
+  if (phraseError) return { error: phraseError.message };
 
   return { error: null };
+}
+
+export function normaliseAnswer(value: string): string {
+  return value
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ");
+}
+
+export const normalizeAnswer = normaliseAnswer;
+
+export function getAcceptableAnswers(item: PracticeItem): string[] {
+  const answers: string[] = [];
+
+  if (item.correct_answer) answers.push(item.correct_answer);
+
+  if (Array.isArray(item.acceptable_answers)) {
+    for (const answer of item.acceptable_answers) {
+      if (typeof answer === "string" && answer.trim()) {
+        answers.push(answer.trim());
+      }
+    }
+  }
+
+  return Array.from(new Set(answers));
+}
+
+export function isAnswerCorrect(userAnswer: string, item: PracticeItem): boolean {
+  const normalizedUser = normaliseAnswer(userAnswer);
+  if (!normalizedUser) return false;
+
+  const answers = getAcceptableAnswers(item).map(normaliseAnswer);
+  return answers.includes(normalizedUser);
+}
+
+export function checkGapFillAnswer(
+  userAnswer: string,
+  item: PracticeItem
+): "correct" | "incorrect" {
+  return isAnswerCorrect(userAnswer, item) ? "correct" : "incorrect";
+}
+
+export async function submitReviewResult(
+  learnerId: string,
+  phraseId: number,
+  messageDraftId: number,
+  _progressId: number,
+  _currentTimesSeen: number,
+  _currentTimesCorrect: number,
+  result: ReviewResult
+): Promise<{ error: string | null }> {
+  const fakeItem: PracticeItem = {
+    id: 0,
+    phrase_id: phraseId,
+    message_draft_id: messageDraftId,
+    exercise_type: "sentence_gap_fill",
+    difficulty: "easy",
+    italian_translation: null,
+    prompt: "",
+    correct_answer: "",
+    acceptable_answers: [],
+    hint: null,
+    explanation: null,
+    status: "approved",
+    created_at: new Date().toISOString(),
+    phrase_text: "",
+    phrase_category: null,
+    phrase_level: null,
+    message_text: null,
+  };
+
+  return submitStudyResult(learnerId, fakeItem, result);
 }

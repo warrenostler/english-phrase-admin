@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import {
   UserRole,
@@ -27,11 +27,7 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   const [loginError, setLoginError] = useState("");
 
-  useEffect(() => {
-    checkSession();
-  }, []);
-
-  async function checkSession() {
+  const checkSession = useCallback(async () => {
     setLoading(true);
     const { data } = await supabase.auth.getUser();
     if (data.user) {
@@ -40,7 +36,11 @@ export default function Home() {
       setIsLoggedIn(false);
     }
     setLoading(false);
-  }
+  }, []);
+
+  useEffect(() => {
+    checkSession();
+  }, [checkSession]);
 
   async function setupUserSession(userEmail: string, userId: string) {
     const detectedRole = await loadUserRole(userEmail, userId);
