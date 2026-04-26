@@ -321,17 +321,25 @@ function getNextDifficultyForPhrase(
 }
 
 export async function loadLearnerStudySummary(learnerId: string): Promise<StudySummary> {
-  const [items, progress, phraseProgress] = await Promise.all([
+  const [items, progress, phraseProgress, sentDrafts] = await Promise.all([
     loadApprovedPracticeItems(),
     loadLearnerPracticeProgress(learnerId),
     loadLearnerProgress(learnerId),
+    loadSentDrafts(),
   ]);
 
   const now = new Date();
   const progressByItemId = new Map(progress.map((p) => [p.practice_item_id, p]));
   const itemsByPhrase = new Map<number, PracticeItem[]>();
+  const sentPhraseIds = new Set(sentDrafts.map((d) => d.phrase_id));
+  const pausedPhraseIds = new Set(
+    phraseProgress.filter((p) => p.status === "paused").map((p) => p.phrase_id)
+  );
 
   for (const item of items) {
+    if (!sentPhraseIds.has(item.phrase_id)) continue;
+    if (pausedPhraseIds.has(item.phrase_id)) continue;
+
     const list = itemsByPhrase.get(item.phrase_id) ?? [];
     list.push(item);
     itemsByPhrase.set(item.phrase_id, list);
@@ -346,11 +354,16 @@ export async function loadLearnerStudySummary(learnerId: string): Promise<StudyS
 
     const item = approvedItemById.get(p.practice_item_id);
     if (!item) continue;
+    if (!sentPhraseIds.has(item.phrase_id)) continue;
+    if (pausedPhraseIds.has(item.phrase_id)) continue;
     duePhraseIds.add(item.phrase_id);
   }
 
   const newPhraseIds = new Set<number>();
   for (const item of items) {
+    if (!sentPhraseIds.has(item.phrase_id)) continue;
+    if (pausedPhraseIds.has(item.phrase_id)) continue;
+
     const hasProgress = progressByItemId.has(item.id);
     if (hasProgress) continue;
 
@@ -380,17 +393,28 @@ export async function buildStudySession(
   maxItems = 5,
   phraseId?: number
 ): Promise<StudySessionItem[]> {
-  const [items, progress] = await Promise.all([
+  const [items, progress, phraseProgress, sentDrafts] = await Promise.all([
     loadApprovedPracticeItems(),
     loadLearnerPracticeProgress(learnerId),
+    loadLearnerProgress(learnerId),
+    loadSentDrafts(),
   ]);
 
   const now = new Date();
-  const itemById = new Map(items.map((item) => [item.id, item]));
+  const sentPhraseIds = new Set(sentDrafts.map((d) => d.phrase_id));
+  const pausedPhraseIds = new Set(
+    phraseProgress.filter((p) => p.status === "paused").map((p) => p.phrase_id)
+  );
+
+  const scopedItems = items.filter(
+    (item) => sentPhraseIds.has(item.phrase_id) && !pausedPhraseIds.has(item.phrase_id)
+  );
+
+  const itemById = new Map(scopedItems.map((item) => [item.id, item]));
   const progressByItemId = new Map(progress.map((p) => [p.practice_item_id, p]));
 
   const itemsByPhrase = new Map<number, PracticeItem[]>();
-  for (const item of items) {
+  for (const item of scopedItems) {
     const list = itemsByPhrase.get(item.phrase_id) ?? [];
     list.push(item);
     itemsByPhrase.set(item.phrase_id, list);
@@ -413,7 +437,7 @@ export async function buildStudySession(
   const dueIds = new Set(due.map((d) => d.practiceItem.id));
 
   const fresh: StudySessionItem[] = [];
-  for (const item of items) {
+  for (const item of scopedItems) {
     if (dueIds.has(item.id)) continue;
     if (phraseId != null && item.phrase_id !== phraseId) continue;
 
