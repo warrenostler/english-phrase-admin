@@ -337,14 +337,19 @@ export async function loadLearnerStudySummary(learnerId: string): Promise<StudyS
     itemsByPhrase.set(item.phrase_id, list);
   }
 
-  let dueCount = 0;
+  const duePhraseIds = new Set<number>();
   const approvedItemIds = new Set(items.map((i) => i.id));
+  const approvedItemById = new Map(items.map((i) => [i.id, i]));
   for (const p of progress) {
     if (!approvedItemIds.has(p.practice_item_id)) continue;
-    if (isDuePracticeProgress(p, now)) dueCount += 1;
+    if (!isDuePracticeProgress(p, now)) continue;
+
+    const item = approvedItemById.get(p.practice_item_id);
+    if (!item) continue;
+    duePhraseIds.add(item.phrase_id);
   }
 
-  let newCount = 0;
+  const newPhraseIds = new Set<number>();
   for (const item of items) {
     const hasProgress = progressByItemId.has(item.id);
     if (hasProgress) continue;
@@ -354,16 +359,18 @@ export async function loadLearnerStudySummary(learnerId: string): Promise<StudyS
     if (item.difficulty !== getNextDifficultyForPhrase(phraseItems, progressByItemId)) continue;
 
     if (item.difficulty === "easy") {
-      newCount += 1;
+      newPhraseIds.add(item.phrase_id);
     }
   }
 
   const mastered = phraseProgress.filter((p) => p.status === "mastered").length;
 
+  const readyPhraseIds = new Set<number>([...duePhraseIds, ...newPhraseIds]);
+
   return {
-    readyToPractice: dueCount + newCount,
-    newAvailable: newCount,
-    reviewDue: dueCount,
+    readyToPractice: readyPhraseIds.size,
+    newAvailable: newPhraseIds.size,
+    reviewDue: duePhraseIds.size,
     mastered,
   };
 }
