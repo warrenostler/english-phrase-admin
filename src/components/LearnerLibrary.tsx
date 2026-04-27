@@ -125,11 +125,40 @@ function parsePhraseContent(message: string): ParsedPhraseContent {
 type MasteryInfo = { percent: number; label: string; color: string };
 
 function getMasteryInfo(difficulty: PracticeDifficulty | null | undefined, status: ProgressStatus): MasteryInfo {
-  if (status === "mastered") return { percent: 100, label: "Mastered", color: "#10b981" };
-  if (difficulty === "hard") return { percent: 90, label: "Near mastery", color: "#1e3a5f" };
-  if (difficulty === "medium") return { percent: 66, label: "Progressing", color: "#1e3a5f" };
-  if (difficulty === "easy") return { percent: 33, label: "Building", color: "#1e3a5f" };
-  return { percent: 0, label: "Not started", color: "#94a3b8" };
+  const percent =
+    status === "mastered"
+      ? 100
+      : difficulty === "hard"
+        ? 90
+        : difficulty === "medium"
+          ? 66
+          : difficulty === "easy"
+            ? 33
+            : 0;
+
+  const label =
+    status === "mastered"
+      ? "Mastered"
+      : difficulty === "hard"
+        ? "Near mastery"
+        : difficulty === "medium"
+          ? "Progressing"
+          : difficulty === "easy"
+            ? "Building"
+            : "Not started";
+
+  const color =
+    percent === 100
+      ? "#2f9e6f"
+      : percent >= 85
+        ? "#b0823a"
+        : percent >= 60
+          ? "#345f90"
+          : percent >= 30
+            ? "#537da6"
+            : "#8b9eb5";
+
+  return { percent, label, color };
 }
 
 function ProgressRing({
@@ -152,7 +181,7 @@ function ProgressRing({
     <span
       className="inline-flex items-center gap-1.5"
       title={`Mastery progress: ${label} (${percent}%)`}
-      aria-label={`Mastery progress: ${label}`}
+      aria-label={`Mastery progress: ${label} (${percent}%)`}
     >
       <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} aria-hidden="true">
         <circle
@@ -177,7 +206,7 @@ function ProgressRing({
           style={{ transition: "stroke-dashoffset 0.4s ease" }}
         />
       </svg>
-      <span className="text-xs font-medium" style={{ color }}>
+      <span className="text-xs font-medium text-slate-600">
         {label}
       </span>
     </span>
@@ -256,7 +285,6 @@ function DetailContent({
 export default function LearnerLibrary({ learnerProfile, onPracticePhrase }: Props) {
   const [sentDrafts, setSentDrafts] = useState<SentMessageDraft[]>([]);
   const [progressMap, setProgressMap] = useState<Record<number, LearnerPhraseProgress>>({});
-  const [difficultiesByPhrase, setDifficultiesByPhrase] = useState<Record<number, PracticeDifficulty[]>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<FilterOption>("all");
@@ -274,16 +302,6 @@ export default function LearnerLibrary({ learnerProfile, onPracticePhrase }: Pro
 
     setSentDrafts(drafts);
     setProgressMap(Object.fromEntries(prog.map((p) => [p.phrase_id, p])));
-
-    const grouped: Record<number, PracticeDifficulty[]> = {};
-    for (const item of items) {
-      const list = grouped[item.phrase_id] ?? [];
-      if (!list.includes(item.difficulty)) {
-        list.push(item.difficulty);
-      }
-      grouped[item.phrase_id] = list;
-    }
-    setDifficultiesByPhrase(grouped);
 
     const pausedByPractice = new Set(
       practiceProgress
@@ -464,10 +482,9 @@ export default function LearnerLibrary({ learnerProfile, onPracticePhrase }: Pro
           ) : (
             filtered.map((draft) => {
               const status = getEffectiveStatus(draft.phrase_id);
-              const isUpdating = actionLoading === draft.phrase_id;
-              const parsed = parsePhraseContent(draft.message_text);
               const progress = progressMap[draft.phrase_id];
               const isSelected = selectedPhraseId === draft.phrase_id;
+              const masteryInfo = getMasteryInfo(progress?.current_difficulty, status);
 
               return (
                 <div
@@ -489,51 +506,34 @@ export default function LearnerLibrary({ learnerProfile, onPracticePhrase }: Pro
                 >
                   {isSelected && <div className="absolute inset-y-3 left-0 w-1 rounded-r bg-slate-900" />}
 
-                  <div className="flex flex-col gap-2.5 md:flex-row md:items-start md:justify-between">
+                  <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-1.5">
+                      <div className="flex flex-wrap items-center gap-2">
                         <h2 className="text-base font-semibold text-slate-900">{draft.phrase_text}</h2>
                         <span
-                          className={`rounded-full px-2 py-0.5 text-xs font-medium capitalize ${getStatusClass(status)}`}
+                          className={`rounded-full px-2 py-0.5 text-[11px] font-medium capitalize ${getStatusClass(status)}`}
                         >
                           {status}
                         </span>
-                        {(() => {
-                          const info = getMasteryInfo(progress?.current_difficulty, status);
-                          return (
-                            <ProgressRing percent={info.percent} label={info.label} color={info.color} size={28} strokeWidth={2.8} />
-                          );
-                        })()}
                       </div>
 
                       <div className="mt-1.5 flex flex-wrap gap-1.5 text-xs">
-                        {draft.phrase_category && (
-                          <span className="rounded-full bg-slate-100 px-2.5 py-1 text-slate-600">
-                            {draft.phrase_category}
-                          </span>
-                        )}
-                        {draft.phrase_level && (
-                          <span className="rounded-full bg-slate-100 px-2.5 py-1 text-slate-600">
-                            {draft.phrase_level}
-                          </span>
-                        )}
-                        {draft.phrase_rating != null && (
-                          <span className="rounded-full bg-slate-100 px-2.5 py-1 text-slate-600">
-                            {draft.phrase_rating}/10
-                          </span>
-                        )}
-
                         {progress?.next_review_at && (
                           <span className="rounded-full bg-amber-50 px-2.5 py-1 text-amber-700">
                             Due {formatReviewDate(progress.next_review_at)}
                           </span>
                         )}
                       </div>
-
-                      <p className="mt-2 line-clamp-1 text-sm text-slate-700">{parsed.summary}</p>
                     </div>
 
-                    <div className="flex w-full flex-row flex-wrap items-center justify-end gap-1.5 md:w-auto md:min-w-[168px] md:flex-col md:items-stretch">
+                    <div className="flex flex-col items-end gap-2">
+                      <ProgressRing
+                        percent={masteryInfo.percent}
+                        label={masteryInfo.label}
+                        color={masteryInfo.color}
+                        size={36}
+                        strokeWidth={3.2}
+                      />
                       <button
                         onClick={(event) => {
                           event.stopPropagation();
@@ -543,40 +543,6 @@ export default function LearnerLibrary({ learnerProfile, onPracticePhrase }: Pro
                       >
                         Practise this
                       </button>
-                      {status === "paused" ? (
-                        <button
-                          disabled={isUpdating}
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            handleUnpause(draft.phrase_id);
-                          }}
-                          className="rounded-lg bg-emerald-100 px-3 py-1.5 text-sm font-medium text-emerald-800 hover:bg-emerald-200 disabled:opacity-40"
-                        >
-                          Unpause
-                        </button>
-                      ) : (
-                        <button
-                          disabled={isUpdating}
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            handleSetStatus(draft.phrase_id, "paused");
-                          }}
-                          className="rounded-lg bg-slate-200 px-3 py-1.5 text-sm font-medium text-slate-800 hover:bg-slate-300 disabled:opacity-40"
-                        >
-                          Pause
-                        </button>
-                      )}
-                      <div className="inline-flex items-center justify-center gap-1 text-xs font-medium text-slate-500">
-                        <span>{isSelected ? "Selected" : "Open details"}</span>
-                        <svg
-                          viewBox="0 0 20 20"
-                          className={`h-4 w-4 transition-transform ${isSelected ? "rotate-180 text-slate-800" : ""}`}
-                          fill="none"
-                          aria-hidden="true"
-                        >
-                          <path d="M5 8l5 5 5-5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-                        </svg>
-                      </div>
                     </div>
                   </div>
 
