@@ -12,6 +12,7 @@ import {
   loadSentDrafts,
   loadLearnerProgress,
   upsertLearnerProgress,
+  unpauseLearnerPhrase,
 } from "@/lib/helpers";
 
 type FilterOption = "all" | ProgressStatus;
@@ -106,6 +107,43 @@ export default function LearnerLibrary({ learnerProfile, onPracticePhrase }: Pro
             learner_id: learnerProfile.id,
             phrase_id: phraseId,
             status,
+            current_difficulty: null,
+            mastery_interval_days: 3,
+            mastered_at: null,
+            last_mastery_review_at: null,
+            ease_score: null,
+            next_review_at: now,
+            last_reviewed_at: null,
+            times_seen: 0,
+            times_correct: 0,
+            created_at: now,
+            updated_at: now,
+          },
+        };
+      });
+    }
+    setActionLoading(null);
+  }
+
+  async function handleUnpause(phraseId: number) {
+    setActionLoading(phraseId);
+    const { error: err } = await unpauseLearnerPhrase(learnerProfile.id, phraseId);
+    if (err) {
+      setError(err);
+    } else {
+      setProgressMap((current) => {
+        const existing = current[phraseId];
+        if (existing) {
+          return { ...current, [phraseId]: { ...existing, status: "learning" } };
+        }
+        const now = new Date().toISOString();
+        return {
+          ...current,
+          [phraseId]: {
+            id: 0,
+            learner_id: learnerProfile.id,
+            phrase_id: phraseId,
+            status: "learning",
             current_difficulty: null,
             mastery_interval_days: 3,
             mastered_at: null,
@@ -256,13 +294,23 @@ export default function LearnerLibrary({ learnerProfile, onPracticePhrase }: Pro
                     >
                       Practise this
                     </button>
-                    <button
-                      disabled={isUpdating || status === "paused"}
-                      onClick={() => handleSetStatus(draft.phrase_id, "paused")}
-                      className="rounded-lg bg-slate-200 px-3 py-1.5 text-sm font-medium text-slate-800 hover:bg-slate-300 disabled:opacity-40"
-                    >
-                      Pause
-                    </button>
+                    {status === "paused" ? (
+                      <button
+                        disabled={isUpdating}
+                        onClick={() => handleUnpause(draft.phrase_id)}
+                        className="rounded-lg bg-emerald-100 px-3 py-1.5 text-sm font-medium text-emerald-800 hover:bg-emerald-200 disabled:opacity-40"
+                      >
+                        Unpause
+                      </button>
+                    ) : (
+                      <button
+                        disabled={isUpdating}
+                        onClick={() => handleSetStatus(draft.phrase_id, "paused")}
+                        className="rounded-lg bg-slate-200 px-3 py-1.5 text-sm font-medium text-slate-800 hover:bg-slate-300 disabled:opacity-40"
+                      >
+                        Pause
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>

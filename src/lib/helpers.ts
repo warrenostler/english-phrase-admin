@@ -205,6 +205,72 @@ export async function upsertLearnerProgress(
   return { error: error?.message ?? null };
 }
 
+export async function unpauseLearnerPhrase(
+  learnerId: string,
+  phraseId: number
+): Promise<{ error: string | null }> {
+  const now = new Date().toISOString();
+
+  const { data: phraseProgress, error: phraseProgressError } = await supabase
+    .from("learner_phrase_progress")
+    .select("id, times_seen, times_correct, next_review_at, last_reviewed_at, created_at")
+    .eq("learner_id", learnerId)
+    .eq("phrase_id", phraseId)
+    .maybeSingle();
+
+  if (phraseProgressError) {
+    return { error: phraseProgressError.message };
+  }
+
+  const phrasePayload = {
+    learner_id: learnerId,
+    phrase_id: phraseId,
+    status: "learning" as ProgressStatus,
+    next_review_at: phraseProgress?.next_review_at ?? now,
+    last_reviewed_at: phraseProgress?.last_reviewed_at ?? null,
+    times_seen: phraseProgress?.times_seen ?? 0,
+    times_correct: phraseProgress?.times_correct ?? 0,
+    updated_at: now,
+    created_at: phraseProgress?.created_at ?? now,
+  };
+
+  const { error: phraseError } = await supabase
+    .from("learner_phrase_progress")
+    .upsert(phrasePayload, { onConflict: "learner_id,phrase_id" });
+
+  if (phraseError) {
+    return { error: phraseError.message };
+  }
+
+  const { data: approvedItems, error: approvedItemsError } = await supabase
+    .from("practice_items")
+    .select("id")
+    .eq("phrase_id", phraseId)
+    .eq("status", "approved")
+    .eq("exercise_type", "sentence_gap_fill");
+
+  if (approvedItemsError) {
+    return { error: approvedItemsError.message };
+  }
+
+  const approvedItemIds = (approvedItems ?? []).map((item) => item.id);
+
+  if (approvedItemIds.length > 0) {
+    const { error: itemProgressError } = await supabase
+      .from("learner_practice_item_progress")
+      .update({ status: "learning", updated_at: now })
+      .eq("learner_id", learnerId)
+      .eq("status", "paused")
+      .in("practice_item_id", approvedItemIds);
+
+    if (itemProgressError) {
+      return { error: itemProgressError.message };
+    }
+  }
+
+  return { error: null };
+}
+
 export async function loadApprovedPracticeItems(): Promise<PracticeItem[]> {
   const { data: rows, error } = await supabase
     .from("practice_items")
