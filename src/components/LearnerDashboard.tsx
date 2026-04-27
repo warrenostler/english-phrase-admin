@@ -18,6 +18,8 @@ export default function LearnerDashboard({
   onStartStudy,
   onNavigateToLibrary,
 }: Props) {
+  const firstName = learnerProfile.first_name?.trim().split(/\s+/)[0] ?? "";
+
   const [summary, setSummary] = useState<StudySummary>({
     readyToPractice: 0,
     newAvailable: 0,
@@ -63,7 +65,7 @@ export default function LearnerDashboard({
   return (
     <div className="w-full bg-slate-50/70 px-4 py-5 sm:px-6 md:py-6 lg:px-8 xl:px-10">
       <h1 className="text-3xl font-semibold text-slate-900">
-        Welcome back{learnerProfile.first_name ? `, ${learnerProfile.first_name}` : ""}!
+        Welcome back{firstName ? `, ${firstName}` : ""}!
       </h1>
       <p className="mt-1 text-slate-600">Ready for your next practice session?</p>
 
@@ -73,8 +75,8 @@ export default function LearnerDashboard({
         </div>
       )}
 
-      <div className="mt-6 grid [grid-template-columns:repeat(auto-fit,minmax(260px,1fr))] gap-6">
-        <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm md:col-span-2">
+      <div className="mt-6 grid grid-cols-1 gap-6 lg:[grid-template-columns:repeat(2,minmax(260px,1fr))]">
+        <div className="flex h-full flex-col justify-between rounded-2xl border border-blue-200/70 bg-blue-50/70 p-6 shadow-sm">
           <p className="text-sm font-medium text-slate-500">Phrases ready to practise</p>
           <p className="mt-2 text-4xl font-bold text-slate-900">{summary.readyToPractice}</p>
           <button
@@ -85,19 +87,19 @@ export default function LearnerDashboard({
           </button>
         </div>
 
-        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="flex h-full flex-col rounded-2xl border border-indigo-200/70 bg-indigo-50/60 p-6 shadow-sm">
           <p className="text-sm text-slate-500">New phrases available</p>
-          <p className="mt-1 text-3xl font-bold text-slate-900">{summary.newAvailable}</p>
+          <p className="mt-2 text-3xl font-bold text-slate-900">{summary.newAvailable}</p>
         </div>
 
-        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="flex h-full flex-col rounded-2xl border border-amber-200/70 bg-amber-50/60 p-6 shadow-sm">
           <p className="text-sm text-slate-500">Ready for review</p>
-          <p className="mt-1 text-3xl font-bold text-slate-900">{summary.reviewDue}</p>
+          <p className="mt-2 text-3xl font-bold text-slate-900">{summary.reviewDue}</p>
         </div>
 
-        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="flex h-full flex-col justify-between rounded-2xl border border-emerald-200/70 bg-emerald-50/60 p-6 shadow-sm">
           <p className="text-sm text-slate-500">Mastered phrases</p>
-          <p className="mt-1 text-3xl font-bold text-slate-900">{summary.mastered}</p>
+          <p className="mt-2 text-3xl font-bold text-slate-900">{summary.mastered}</p>
           <button
             onClick={onNavigateToLibrary}
             className="mt-3 text-sm font-medium text-blue-600 hover:underline"
