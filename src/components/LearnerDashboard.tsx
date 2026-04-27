@@ -54,14 +54,14 @@ export default function LearnerDashboard({
 
   if (loading) {
     return (
-      <div className="mx-auto max-w-3xl p-6 md:p-10">
+      <div className="w-full bg-slate-50/70 px-4 py-5 sm:px-6 md:py-6 lg:px-8 xl:px-10">
         <p className="text-slate-600">Loading your dashboard…</p>
       </div>
     );
   }
 
   return (
-    <div className="mx-auto max-w-3xl p-6 md:p-10">
+    <div className="w-full bg-slate-50/70 px-4 py-5 sm:px-6 md:py-6 lg:px-8 xl:px-10">
       <h1 className="text-3xl font-semibold text-slate-900">
         Welcome back{learnerProfile.first_name ? `, ${learnerProfile.first_name}` : ""}!
       </h1>
@@ -73,18 +73,18 @@ export default function LearnerDashboard({
         </div>
       )}
 
-      <div className="mt-8 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-        <p className="text-sm text-slate-500">Phrases ready to practise</p>
-        <p className="mt-1 text-4xl font-bold text-slate-900">{summary.readyToPractice}</p>
-        <button
-          onClick={onStartStudy}
-          className="mt-4 rounded-lg bg-slate-900 px-5 py-2.5 text-sm font-medium text-white hover:bg-slate-700"
-        >
-          Start study session
-        </button>
-      </div>
+      <div className="mt-6 grid [grid-template-columns:repeat(auto-fit,minmax(260px,1fr))] gap-6">
+        <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm md:col-span-2">
+          <p className="text-sm font-medium text-slate-500">Phrases ready to practise</p>
+          <p className="mt-2 text-4xl font-bold text-slate-900">{summary.readyToPractice}</p>
+          <button
+            onClick={onStartStudy}
+            className="mt-5 rounded-lg bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white hover:bg-slate-800"
+          >
+            Start study session
+          </button>
+        </div>
 
-      <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-3">
         <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
           <p className="text-sm text-slate-500">New phrases available</p>
           <p className="mt-1 text-3xl font-bold text-slate-900">{summary.newAvailable}</p>

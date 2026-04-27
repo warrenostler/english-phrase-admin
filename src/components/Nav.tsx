@@ -20,16 +20,16 @@ export default function Nav({ role, activeView, onNavigate, onSignOut }: NavProp
     }`;
 
   return (
-    <nav className="flex items-center justify-between border-b border-slate-200 bg-white px-6 py-3">
-      <div className="flex items-center gap-1">
-        <div className="mr-4 flex items-center gap-2">
+    <nav className="flex items-center justify-between border-b border-slate-200 bg-white px-4 py-3.5 sm:px-6 sm:py-4 lg:px-8 xl:px-10">
+      <div className="flex items-center gap-2">
+        <div className="mr-6 flex items-center gap-2.5">
           <span
-            className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-slate-100 text-xs font-semibold text-slate-700"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-xl bg-slate-100 text-sm font-bold text-slate-700 ring-1 ring-slate-200"
             aria-hidden="true"
           >
             V
           </span>
-          <span className="text-base font-semibold tracking-tight text-slate-900">Verba</span>
+          <span className="text-xl font-bold tracking-tight text-slate-900">Verba</span>
         </div>
 
         {role === "admin" && (
