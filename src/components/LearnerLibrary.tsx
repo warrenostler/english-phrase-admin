@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import {
   LearnerProfile,
   SentMessageDraft,
@@ -211,6 +211,99 @@ function ProgressRing({
   );
 }
 
+function YouGlishEmbed({ phrase }: { phrase: string }) {
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [failed, setFailed] = useState(false);
+  const encodedPhrase = encodeURIComponent(phrase.trim());
+  const fallbackUrl = `https://youglish.com/pronounce/${encodedPhrase}/english`;
+
+  useEffect(() => {
+    const container = containerRef.current;
+    const cleanPhrase = phrase.trim();
+
+    if (!container || !cleanPhrase) {
+      setLoading(false);
+      setFailed(true);
+      return;
+    }
+
+    setLoading(true);
+    setFailed(false);
+    container.innerHTML = "";
+
+    const anchor = document.createElement("a");
+    anchor.id = `yg-widget-${Date.now()}`;
+    anchor.className = "youglish-widget";
+    anchor.href = "https://youglish.com";
+    anchor.setAttribute("data-query", encodeURIComponent(cleanPhrase));
+    anchor.setAttribute("data-lang", "english");
+    anchor.setAttribute("data-auto-start", "1");
+    anchor.textContent = "Visit YouGlish.com";
+    container.appendChild(anchor);
+
+    let cancelled = false;
+    const script = document.createElement("script");
+    script.async = true;
+    script.charset = "utf-8";
+    script.src = `https://youglish.com/public/emb/widget.js?t=${Date.now()}`;
+
+    const finalizeLoad = () => {
+      if (cancelled) return;
+
+      const stillUnrendered = (container.textContent ?? "").trim() === "Visit YouGlish.com";
+      setFailed(stillUnrendered);
+      setLoading(false);
+    };
+
+    script.onload = () => {
+      window.setTimeout(finalizeLoad, 450);
+    };
+
+    script.onerror = () => {
+      if (cancelled) return;
+      setFailed(true);
+      setLoading(false);
+    };
+
+    const timeoutId = window.setTimeout(() => {
+      if (cancelled) return;
+      setFailed(true);
+      setLoading(false);
+    }, 5000);
+
+    document.body.appendChild(script);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timeoutId);
+      if (script.parentNode) {
+        script.parentNode.removeChild(script);
+      }
+      if (container) {
+        container.innerHTML = "";
+      }
+    };
+  }, [phrase]);
+
+  return (
+    <div className="rounded-xl border border-slate-200 bg-slate-50 p-3.5">
+      {loading && <p className="text-sm text-slate-600">Loading YouGlish examples…</p>}
+      <div ref={containerRef} className={loading ? "mt-2 min-h-[108px]" : "mt-2"} />
+      {failed && (
+        <a
+          href={fallbackUrl}
+          target="_blank"
+          rel="noreferrer"
+          className="mt-2 inline-flex text-sm font-medium text-blue-700 hover:underline"
+        >
+          Search YouGlish
+        </a>
+      )}
+    </div>
+  );
+}
+
 function isReadyForReview(nextReviewAt: string | null | undefined): boolean {
   if (!nextReviewAt) return false;
   const reviewTime = new Date(nextReviewAt);
@@ -266,13 +359,29 @@ function DetailContent({
       {DETAIL_SECTION_ORDER.map((section) => {
         const lines = parsed.sections[section] ?? [];
         const content = lines.join("\n").trim();
-        if (!content) return null;
+
+        const includeYouGlish = section === "examples";
+
+        if (!content && !includeYouGlish) return null;
 
         return (
-          <section key={section}>
-            <h4 className="text-sm font-semibold text-slate-900">{DETAIL_SECTION_LABELS[section]}</h4>
-            <p className="mt-1 whitespace-pre-wrap text-sm leading-7 text-slate-700">{content}</p>
-          </section>
+          <Fragment key={section}>
+            {includeYouGlish && (
+              <section>
+                <h4 className="text-sm font-semibold text-slate-900">Hear it in real speech</h4>
+                <div className="mt-1">
+                  <YouGlishEmbed phrase={draft.phrase_text} />
+                </div>
+              </section>
+            )}
+
+            {content && (
+              <section>
+                <h4 className="text-sm font-semibold text-slate-900">{DETAIL_SECTION_LABELS[section]}</h4>
+                <p className="mt-1 whitespace-pre-wrap text-sm leading-7 text-slate-700">{content}</p>
+              </section>
+            )}
+          </Fragment>
         );
       })}
     </div>
