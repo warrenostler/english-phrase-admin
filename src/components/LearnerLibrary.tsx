@@ -365,14 +365,14 @@ export default function LearnerLibrary({ learnerProfile, onPracticePhrase }: Pro
 
   if (loading) {
     return (
-      <div className="mx-auto max-w-[1240px] p-5 md:p-8">
+      <div className="w-full px-4 py-5 sm:px-6 lg:px-8 xl:px-10">
         <p className="text-slate-600">Loading your phrase library…</p>
       </div>
     );
   }
 
   return (
-    <div className="mx-auto max-w-[1240px] rounded-3xl bg-slate-50/70 p-5 md:p-8">
+    <div className="w-full bg-slate-50/70 px-4 py-5 sm:px-6 md:py-6 lg:px-8 xl:px-10">
       <h1 className="text-3xl font-semibold text-slate-950">Phrase Library</h1>
       <p className="mt-1 text-slate-600">All phrases sent to you.</p>
 
@@ -398,7 +398,7 @@ export default function LearnerLibrary({ learnerProfile, onPracticePhrase }: Pro
         ))}
       </div>
 
-      <div className="mt-5 grid gap-6 lg:grid-cols-[minmax(380px,460px)_minmax(0,1fr)]">
+      <div className="mt-5 grid w-full grid-cols-1 gap-6 lg:grid-cols-[420px_minmax(0,1fr)] xl:grid-cols-[440px_minmax(0,1fr)]">
         <div className="space-y-2.5">
           {filtered.length === 0 ? (
             <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-sm">
@@ -537,19 +537,14 @@ export default function LearnerLibrary({ learnerProfile, onPracticePhrase }: Pro
                     </div>
                   </div>
 
-                  {isSelected && (
-                    <div className="mt-3 border-t border-slate-200 pt-3 lg:hidden">
-                      <DetailContent draft={draft} progress={progress} />
-                    </div>
-                  )}
                 </div>
               );
             })
           )}
         </div>
 
-        <aside className="hidden lg:block">
-          <div className="sticky top-6 min-h-[72vh] rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+        <aside className="min-w-0">
+          <div className="min-h-[48vh] rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6 lg:sticky lg:top-6 lg:min-h-[72vh]">
             {selectedDraft ? (
               <>
                 <div className="flex items-start justify-between gap-3">
@@ -591,15 +586,17 @@ export default function LearnerLibrary({ learnerProfile, onPracticePhrase }: Pro
                     </button>
                   )}
                 </div>
-                <div className="mt-5 max-h-[68vh] overflow-y-auto pr-1">
-                  <DetailContent
-                    draft={selectedDraft}
-                    progress={progressMap[selectedDraft.phrase_id]}
-                  />
+                <div className="mt-5 lg:max-h-[68vh] lg:overflow-y-auto lg:pr-1">
+                  <div className="max-w-[780px]">
+                    <DetailContent
+                      draft={selectedDraft}
+                      progress={progressMap[selectedDraft.phrase_id]}
+                    />
+                  </div>
                 </div>
               </>
             ) : (
-              <div className="flex min-h-[60vh] items-center justify-center rounded-xl border border-dashed border-slate-200 bg-slate-50 p-6 text-center">
+              <div className="flex min-h-[34vh] items-center justify-center rounded-xl border border-dashed border-slate-200 bg-slate-50 p-6 text-center lg:min-h-[60vh]">
                 <p className="text-sm text-slate-600">Select a phrase to view full details.</p>
               </div>
             )}
