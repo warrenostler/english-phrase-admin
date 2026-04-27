@@ -122,6 +122,68 @@ function parsePhraseContent(message: string): ParsedPhraseContent {
   return { summary, sections };
 }
 
+type MasteryInfo = { percent: number; label: string; color: string };
+
+function getMasteryInfo(difficulty: PracticeDifficulty | null | undefined, status: ProgressStatus): MasteryInfo {
+  if (status === "mastered") return { percent: 100, label: "Mastered", color: "#10b981" };
+  if (difficulty === "hard") return { percent: 90, label: "Near mastery", color: "#1e3a5f" };
+  if (difficulty === "medium") return { percent: 66, label: "Progressing", color: "#1e3a5f" };
+  if (difficulty === "easy") return { percent: 33, label: "Building", color: "#1e3a5f" };
+  return { percent: 0, label: "Not started", color: "#94a3b8" };
+}
+
+function ProgressRing({
+  percent,
+  label,
+  color,
+  size = 36,
+  strokeWidth = 3.5,
+}: {
+  percent: number;
+  label: string;
+  color: string;
+  size?: number;
+  strokeWidth?: number;
+}) {
+  const r = (size - strokeWidth) / 2;
+  const circumference = 2 * Math.PI * r;
+  const offset = circumference - (percent / 100) * circumference;
+  return (
+    <span
+      className="inline-flex items-center gap-1.5"
+      title={`Mastery progress: ${label} (${percent}%)`}
+      aria-label={`Mastery progress: ${label}`}
+    >
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} aria-hidden="true">
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={r}
+          fill="none"
+          stroke="#dde3ec"
+          strokeWidth={strokeWidth}
+        />
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={r}
+          fill="none"
+          stroke={color}
+          strokeWidth={strokeWidth}
+          strokeDasharray={circumference}
+          strokeDashoffset={offset}
+          strokeLinecap="round"
+          transform={`rotate(-90 ${size / 2} ${size / 2})`}
+          style={{ transition: "stroke-dashoffset 0.4s ease" }}
+        />
+      </svg>
+      <span className="text-xs font-medium" style={{ color }}>
+        {label}
+      </span>
+    </span>
+  );
+}
+
 function formatReviewDate(value: string | null): string | null {
   if (!value) return null;
   const date = new Date(value);
@@ -132,12 +194,6 @@ function formatReviewDate(value: string | null): string | null {
     hour: "numeric",
     minute: "2-digit",
   });
-}
-
-function getDifficultyClass(difficulty: PracticeDifficulty): string {
-  if (difficulty === "hard") return "bg-rose-50 text-rose-700 border border-rose-100";
-  if (difficulty === "medium") return "bg-amber-50 text-amber-700 border border-amber-100";
-  return "bg-emerald-50 text-emerald-700 border border-emerald-100";
 }
 
 function getStatusClass(status: ProgressStatus): string {
@@ -159,15 +215,16 @@ function DetailContent({
 
   return (
     <div className="space-y-5">
-      <div className="flex flex-wrap gap-2 text-xs">
+      <div className="flex flex-wrap items-center gap-2 text-xs">
         <span className={`rounded-full px-2.5 py-1 font-medium capitalize ${getStatusClass(progress?.status ?? "new")}`}>
           {progress?.status ?? "new"}
         </span>
-        {progress?.current_difficulty && (
-          <span className="rounded-full border border-blue-100 bg-blue-50 px-2.5 py-1 font-medium capitalize text-blue-700">
-            Current {progress.current_difficulty}
-          </span>
-        )}
+        {(() => {
+          const info = getMasteryInfo(progress?.current_difficulty, progress?.status ?? "new");
+          return (
+            <ProgressRing percent={info.percent} label={info.label} color={info.color} size={32} strokeWidth={3} />
+          );
+        })()}
         {progress?.next_review_at && (
           <span className="rounded-full border border-amber-100 bg-amber-50 px-2.5 py-1 font-medium text-amber-700">
             Due {formatReviewDate(progress.next_review_at)}
@@ -441,6 +498,12 @@ export default function LearnerLibrary({ learnerProfile, onPracticePhrase }: Pro
                         >
                           {status}
                         </span>
+                        {(() => {
+                          const info = getMasteryInfo(progress?.current_difficulty, status);
+                          return (
+                            <ProgressRing percent={info.percent} label={info.label} color={info.color} size={28} strokeWidth={2.8} />
+                          );
+                        })()}
                       </div>
 
                       <div className="mt-1.5 flex flex-wrap gap-1.5 text-xs">
@@ -460,26 +523,6 @@ export default function LearnerLibrary({ learnerProfile, onPracticePhrase }: Pro
                           </span>
                         )}
 
-                        {(difficultiesByPhrase[draft.phrase_id] ?? []).length > 0 ? (
-                          (difficultiesByPhrase[draft.phrase_id] ?? []).map((difficulty) => (
-                            <span
-                              key={difficulty}
-                              className={`rounded-full px-2.5 py-1 capitalize ${getDifficultyClass(difficulty)}`}
-                            >
-                              {difficulty}
-                            </span>
-                          ))
-                        ) : (
-                          <span className="rounded-full bg-slate-100 px-2.5 py-1 text-slate-500">
-                            No approved exercises
-                          </span>
-                        )}
-
-                        {progress?.current_difficulty && (
-                          <span className="rounded-full bg-blue-50 px-2.5 py-1 text-blue-700 capitalize">
-                            Current {progress.current_difficulty}
-                          </span>
-                        )}
                         {progress?.next_review_at && (
                           <span className="rounded-full bg-amber-50 px-2.5 py-1 text-amber-700">
                             Due {formatReviewDate(progress.next_review_at)}
