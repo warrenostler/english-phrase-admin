@@ -91,7 +91,7 @@ export default function LearnerDashboard({
         </div>
 
         <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <p className="text-sm text-slate-500">Review phrases due</p>
+          <p className="text-sm text-slate-500">Ready for review</p>
           <p className="mt-1 text-3xl font-bold text-slate-900">{summary.reviewDue}</p>
         </div>
 

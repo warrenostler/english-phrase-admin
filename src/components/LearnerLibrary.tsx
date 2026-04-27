@@ -213,16 +213,11 @@ function ProgressRing({
   );
 }
 
-function formatReviewDate(value: string | null): string | null {
-  if (!value) return null;
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return null;
-  return date.toLocaleString([], {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
+function isReadyForReview(nextReviewAt: string | null | undefined): boolean {
+  if (!nextReviewAt) return false;
+  const reviewTime = new Date(nextReviewAt);
+  if (Number.isNaN(reviewTime.getTime())) return false;
+  return reviewTime <= new Date();
 }
 
 function getStatusClass(status: ProgressStatus): string {
@@ -241,6 +236,10 @@ function DetailContent({
   progress: LearnerPhraseProgress | undefined;
 }) {
   const parsed = parsePhraseContent(draft.message_text);
+  const readyForReview =
+    progress?.status !== "paused" &&
+    progress?.status !== "mastered" &&
+    isReadyForReview(progress?.next_review_at);
 
   return (
     <div className="space-y-5">
@@ -254,9 +253,9 @@ function DetailContent({
             <ProgressRing percent={info.percent} label={info.label} color={info.color} size={32} strokeWidth={3} />
           );
         })()}
-        {progress?.next_review_at && (
+        {readyForReview && (
           <span className="rounded-full border border-amber-100 bg-amber-50 px-2.5 py-1 font-medium text-amber-700">
-            Due {formatReviewDate(progress.next_review_at)}
+            Ready to review
           </span>
         )}
         {typeof progress?.times_seen === "number" && (
@@ -485,6 +484,10 @@ export default function LearnerLibrary({ learnerProfile, onPracticePhrase }: Pro
               const progress = progressMap[draft.phrase_id];
               const isSelected = selectedPhraseId === draft.phrase_id;
               const masteryInfo = getMasteryInfo(progress?.current_difficulty, status);
+              const readyForReview =
+                status !== "paused" &&
+                status !== "mastered" &&
+                isReadyForReview(progress?.next_review_at);
 
               return (
                 <div
@@ -518,9 +521,9 @@ export default function LearnerLibrary({ learnerProfile, onPracticePhrase }: Pro
                       </div>
 
                       <div className="mt-1.5 flex flex-wrap gap-1.5 text-xs">
-                        {progress?.next_review_at && (
+                        {readyForReview && (
                           <span className="rounded-full bg-amber-50 px-2.5 py-1 text-amber-700">
-                            Due {formatReviewDate(progress.next_review_at)}
+                            Ready to review
                           </span>
                         )}
                       </div>

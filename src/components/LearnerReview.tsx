@@ -118,7 +118,7 @@ export default function LearnerReview({ learnerProfile }: Props) {
       <div className="mx-auto max-w-2xl p-6 md:p-10">
         <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center shadow-sm">
           <p className="text-2xl font-semibold text-slate-900">All caught up! 🎉</p>
-          <p className="mt-2 text-slate-600">No phrases due for review right now.</p>
+          <p className="mt-2 text-slate-600">No phrases ready for review right now.</p>
           <button
             onClick={load}
             className="mt-6 rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"

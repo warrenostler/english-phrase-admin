@@ -22,7 +22,15 @@ export default function Nav({ role, activeView, onNavigate, onSignOut }: NavProp
   return (
     <nav className="flex items-center justify-between border-b border-slate-200 bg-white px-6 py-3">
       <div className="flex items-center gap-1">
-        <span className="mr-4 font-semibold text-slate-900">English Phrase</span>
+        <div className="mr-4 flex items-center gap-2">
+          <span
+            className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-slate-100 text-xs font-semibold text-slate-700"
+            aria-hidden="true"
+          >
+            V
+          </span>
+          <span className="text-base font-semibold tracking-tight text-slate-900">Verba</span>
+        </div>
 
         {role === "admin" && (
           <button

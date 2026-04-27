@@ -169,7 +169,7 @@ export default function LearnerStudySession({
   }
 
   if (items.length === 0) {
-    let emptyMessage = "No study items due today";
+    let emptyMessage = "No study items ready right now";
 
     if (approvedCount === 0) {
       emptyMessage = "No approved practice items yet";
