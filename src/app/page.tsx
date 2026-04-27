@@ -180,7 +180,7 @@ export default function Home() {
       {role === "learner" && learnerProfile && activeView === "learner-library" && (
         <LearnerLibrary
           learnerProfile={learnerProfile}
-          onPracticePhrase={(phraseId) => openStudySession(phraseId)}
+          onStartReviewSession={() => openStudySession()}
         />
       )}
 

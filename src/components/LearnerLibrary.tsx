@@ -11,8 +11,6 @@ import {
   loadLearnerPracticeProgress,
   loadSentDrafts,
   loadLearnerProgress,
-  upsertLearnerProgress,
-  unpauseLearnerPhrase,
 } from "@/lib/helpers";
 
 type FilterOption = "all" | ProgressStatus;
@@ -21,7 +19,7 @@ const FILTERS: FilterOption[] = ["all", "new", "learning", "reviewing", "mastere
 
 type Props = {
   learnerProfile: LearnerProfile;
-  onPracticePhrase: (phraseId: number) => void;
+  onStartReviewSession: () => void;
 };
 
 type DetailSectionKey =
@@ -281,13 +279,12 @@ function DetailContent({
   );
 }
 
-export default function LearnerLibrary({ learnerProfile, onPracticePhrase }: Props) {
+export default function LearnerLibrary({ learnerProfile, onStartReviewSession }: Props) {
   const [sentDrafts, setSentDrafts] = useState<SentMessageDraft[]>([]);
   const [progressMap, setProgressMap] = useState<Record<number, LearnerPhraseProgress>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<FilterOption>("all");
-  const [actionLoading, setActionLoading] = useState<number | null>(null);
   const [selectedPhraseId, setSelectedPhraseId] = useState<number | null>(null);
   const [didAutoSelectInitial, setDidAutoSelectInitial] = useState(false);
 
@@ -335,83 +332,14 @@ export default function LearnerLibrary({ learnerProfile, onPracticePhrase }: Pro
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [learnerProfile.id]);
 
-  async function handleSetStatus(phraseId: number, status: ProgressStatus) {
-    setActionLoading(phraseId);
-    const { error: err } = await upsertLearnerProgress(learnerProfile.id, phraseId, status);
-    if (err) {
-      setError(err);
-    } else {
-      // Optimistically update local state
-      setProgressMap((current) => {
-        const existing = current[phraseId];
-        if (existing) {
-          return { ...current, [phraseId]: { ...existing, status } };
-        }
-        const now = new Date().toISOString();
-        return {
-          ...current,
-          [phraseId]: {
-            id: 0,
-            learner_id: learnerProfile.id,
-            phrase_id: phraseId,
-            status,
-            current_difficulty: null,
-            mastery_interval_days: 3,
-            mastered_at: null,
-            last_mastery_review_at: null,
-            ease_score: null,
-            next_review_at: now,
-            last_reviewed_at: null,
-            times_seen: 0,
-            times_correct: 0,
-            created_at: now,
-            updated_at: now,
-          },
-        };
-      });
-    }
-    setActionLoading(null);
-  }
-
-  async function handleUnpause(phraseId: number) {
-    setActionLoading(phraseId);
-    const { error: err } = await unpauseLearnerPhrase(learnerProfile.id, phraseId);
-    if (err) {
-      setError(err);
-    } else {
-      setProgressMap((current) => {
-        const existing = current[phraseId];
-        if (existing) {
-          return { ...current, [phraseId]: { ...existing, status: "learning" } };
-        }
-        const now = new Date().toISOString();
-        return {
-          ...current,
-          [phraseId]: {
-            id: 0,
-            learner_id: learnerProfile.id,
-            phrase_id: phraseId,
-            status: "learning",
-            current_difficulty: null,
-            mastery_interval_days: 3,
-            mastered_at: null,
-            last_mastery_review_at: null,
-            ease_score: null,
-            next_review_at: now,
-            last_reviewed_at: null,
-            times_seen: 0,
-            times_correct: 0,
-            created_at: now,
-            updated_at: now,
-          },
-        };
-      });
-    }
-    setActionLoading(null);
-  }
-
   const getEffectiveStatus = (phraseId: number): ProgressStatus =>
     progressMap[phraseId]?.status ?? "new";
+
+  const isPhraseReadyForReview = (phraseId: number): boolean => {
+    const progress = progressMap[phraseId];
+    const status = progress?.status ?? "new";
+    return status !== "paused" && status !== "mastered" && isReadyForReview(progress?.next_review_at);
+  };
 
   const filtered = sentDrafts.filter((d) => {
     if (filter === "all") return true;
@@ -437,6 +365,8 @@ export default function LearnerLibrary({ learnerProfile, onPracticePhrase }: Pro
       ? null
       : filtered.find((draft) => draft.phrase_id === selectedPhraseId) ?? null;
 
+  const readyToReviewCount = sentDrafts.filter((draft) => isPhraseReadyForReview(draft.phrase_id)).length;
+
   if (loading) {
     return (
       <div className="w-full px-4 py-5 sm:px-6 lg:px-8 xl:px-10">
@@ -455,6 +385,20 @@ export default function LearnerLibrary({ learnerProfile, onPracticePhrase }: Pro
           {error}
         </div>
       )}
+
+      <div className="mt-5 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-sm font-medium text-slate-700">
+            {readyToReviewCount} phrase{readyToReviewCount === 1 ? "" : "s"} ready to review
+          </p>
+          <button
+            onClick={onStartReviewSession}
+            className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800"
+          >
+            Start Review Session
+          </button>
+        </div>
+      </div>
 
       <div className="mt-5 flex flex-wrap gap-2">
         {FILTERS.map((f) => (
@@ -484,10 +428,7 @@ export default function LearnerLibrary({ learnerProfile, onPracticePhrase }: Pro
               const progress = progressMap[draft.phrase_id];
               const isSelected = selectedPhraseId === draft.phrase_id;
               const masteryInfo = getMasteryInfo(progress?.current_difficulty, status);
-              const readyForReview =
-                status !== "paused" &&
-                status !== "mastered" &&
-                isReadyForReview(progress?.next_review_at);
+              const readyForReview = isPhraseReadyForReview(draft.phrase_id);
 
               return (
                 <div
@@ -537,15 +478,6 @@ export default function LearnerLibrary({ learnerProfile, onPracticePhrase }: Pro
                         size={36}
                         strokeWidth={3.2}
                       />
-                      <button
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          onPracticePhrase(draft.phrase_id);
-                        }}
-                        className="rounded-lg bg-slate-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-800"
-                      >
-                        Practise this
-                      </button>
                     </div>
                   </div>
 
@@ -574,28 +506,14 @@ export default function LearnerLibrary({ learnerProfile, onPracticePhrase }: Pro
                   </button>
                 </div>
                 <div className="mt-4 flex flex-wrap gap-2">
-                  <button
-                    onClick={() => onPracticePhrase(selectedDraft.phrase_id)}
-                    className="rounded-lg bg-slate-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-800"
-                  >
-                    Practise this
-                  </button>
-                  {getEffectiveStatus(selectedDraft.phrase_id) === "paused" ? (
-                    <button
-                      disabled={actionLoading === selectedDraft.phrase_id}
-                      onClick={() => handleUnpause(selectedDraft.phrase_id)}
-                      className="rounded-lg bg-emerald-100 px-3 py-1.5 text-sm font-medium text-emerald-800 hover:bg-emerald-200 disabled:opacity-40"
-                    >
-                      Unpause
-                    </button>
+                  {isPhraseReadyForReview(selectedDraft.phrase_id) ? (
+                    <p className="rounded-full border border-amber-100 bg-amber-50 px-3 py-1 text-xs font-medium text-amber-700">
+                      This phrase will be included in your next review session.
+                    </p>
                   ) : (
-                    <button
-                      disabled={actionLoading === selectedDraft.phrase_id}
-                      onClick={() => handleSetStatus(selectedDraft.phrase_id, "paused")}
-                      className="rounded-lg bg-slate-200 px-3 py-1.5 text-sm font-medium text-slate-800 hover:bg-slate-300 disabled:opacity-40"
-                    >
-                      Pause
-                    </button>
+                    <p className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-600">
+                      This phrase is not ready for review yet.
+                    </p>
                   )}
                 </div>
                 <div className="mt-5 lg:max-h-[68vh] lg:overflow-y-auto lg:pr-1">
