@@ -134,6 +134,20 @@ function formatReviewDate(value: string | null): string | null {
   });
 }
 
+function getDifficultyClass(difficulty: PracticeDifficulty): string {
+  if (difficulty === "hard") return "bg-rose-50 text-rose-700 border border-rose-100";
+  if (difficulty === "medium") return "bg-amber-50 text-amber-700 border border-amber-100";
+  return "bg-emerald-50 text-emerald-700 border border-emerald-100";
+}
+
+function getStatusClass(status: ProgressStatus): string {
+  if (status === "learning") return "bg-blue-100 text-blue-700";
+  if (status === "reviewing") return "bg-amber-100 text-amber-700";
+  if (status === "mastered") return "bg-emerald-100 text-emerald-700";
+  if (status === "paused") return "bg-slate-200 text-slate-700";
+  return "bg-slate-100 text-slate-700";
+}
+
 function DetailContent({
   draft,
   progress,
@@ -144,25 +158,25 @@ function DetailContent({
   const parsed = parsePhraseContent(draft.message_text);
 
   return (
-    <div className="space-y-4">
-      <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
-        <p>
-          Status: <span className="font-semibold capitalize text-slate-900">{progress?.status ?? "new"}</span>
-        </p>
+    <div className="space-y-5">
+      <div className="flex flex-wrap gap-2 text-xs">
+        <span className={`rounded-full px-2.5 py-1 font-medium capitalize ${getStatusClass(progress?.status ?? "new")}`}>
+          {progress?.status ?? "new"}
+        </span>
         {progress?.current_difficulty && (
-          <p className="mt-1">
-            Difficulty: <span className="font-semibold capitalize text-slate-900">{progress.current_difficulty}</span>
-          </p>
+          <span className="rounded-full border border-blue-100 bg-blue-50 px-2.5 py-1 font-medium capitalize text-blue-700">
+            Current {progress.current_difficulty}
+          </span>
         )}
         {progress?.next_review_at && (
-          <p className="mt-1">
-            Next review: <span className="font-semibold text-slate-900">{formatReviewDate(progress.next_review_at)}</span>
-          </p>
+          <span className="rounded-full border border-amber-100 bg-amber-50 px-2.5 py-1 font-medium text-amber-700">
+            Due {formatReviewDate(progress.next_review_at)}
+          </span>
         )}
         {typeof progress?.times_seen === "number" && (
-          <p className="mt-1">
-            Reviews completed: <span className="font-semibold text-slate-900">{progress.times_seen}</span>
-          </p>
+          <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 font-medium text-slate-700">
+            {progress.times_seen} reviews
+          </span>
         )}
       </div>
 
@@ -174,7 +188,7 @@ function DetailContent({
         return (
           <section key={section}>
             <h4 className="text-sm font-semibold text-slate-900">{DETAIL_SECTION_LABELS[section]}</h4>
-            <p className="mt-1 whitespace-pre-wrap text-sm leading-6 text-slate-700">{content}</p>
+            <p className="mt-1 whitespace-pre-wrap text-sm leading-7 text-slate-700">{content}</p>
           </section>
         );
       })}
@@ -191,6 +205,7 @@ export default function LearnerLibrary({ learnerProfile, onPracticePhrase }: Pro
   const [filter, setFilter] = useState<FilterOption>("all");
   const [actionLoading, setActionLoading] = useState<number | null>(null);
   const [selectedPhraseId, setSelectedPhraseId] = useState<number | null>(null);
+  const [didAutoSelectInitial, setDidAutoSelectInitial] = useState(false);
 
   async function load() {
     const [drafts, prog, items, practiceProgress] = await Promise.all([
@@ -336,30 +351,29 @@ export default function LearnerLibrary({ learnerProfile, onPracticePhrase }: Pro
     }
   }, [filtered, selectedPhraseId]);
 
+  useEffect(() => {
+    if (didAutoSelectInitial) return;
+    if (filtered.length === 0 || selectedPhraseId != null) return;
+    setSelectedPhraseId(filtered[0].phrase_id);
+    setDidAutoSelectInitial(true);
+  }, [didAutoSelectInitial, filtered, selectedPhraseId]);
+
   const selectedDraft =
     selectedPhraseId == null
       ? null
       : filtered.find((draft) => draft.phrase_id === selectedPhraseId) ?? null;
 
-  const statusBadgeClass: Record<ProgressStatus, string> = {
-    new: "bg-slate-100 text-slate-600",
-    learning: "bg-blue-100 text-blue-700",
-    reviewing: "bg-yellow-100 text-yellow-700",
-    mastered: "bg-green-100 text-green-700",
-    paused: "bg-orange-100 text-orange-700",
-  };
-
   if (loading) {
     return (
-      <div className="mx-auto max-w-4xl p-6 md:p-10">
+      <div className="mx-auto max-w-[1240px] p-5 md:p-8">
         <p className="text-slate-600">Loading your phrase library…</p>
       </div>
     );
   }
 
   return (
-    <div className="mx-auto max-w-4xl p-6 md:p-10">
-      <h1 className="text-3xl font-semibold text-slate-900">Phrase Library</h1>
+    <div className="mx-auto max-w-[1240px] rounded-3xl bg-slate-50/70 p-5 md:p-8">
+      <h1 className="text-3xl font-semibold text-slate-950">Phrase Library</h1>
       <p className="mt-1 text-slate-600">All phrases sent to you.</p>
 
       {error && (
@@ -368,7 +382,7 @@ export default function LearnerLibrary({ learnerProfile, onPracticePhrase }: Pro
         </div>
       )}
 
-      <div className="mt-6 flex flex-wrap gap-2">
+      <div className="mt-5 flex flex-wrap gap-2">
         {FILTERS.map((f) => (
           <button
             key={f}
@@ -376,7 +390,7 @@ export default function LearnerLibrary({ learnerProfile, onPracticePhrase }: Pro
             className={`rounded-full px-3 py-1 text-sm font-medium capitalize transition-colors ${
               filter === f
                 ? "bg-slate-900 text-white"
-                : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+                : "bg-white text-slate-700 ring-1 ring-slate-200 hover:bg-slate-100"
             }`}
           >
             {f}
@@ -384,8 +398,8 @@ export default function LearnerLibrary({ learnerProfile, onPracticePhrase }: Pro
         ))}
       </div>
 
-      <div className="mt-6 grid gap-4 lg:grid-cols-[minmax(0,1fr)_380px]">
-        <div className="space-y-3">
+      <div className="mt-5 grid gap-6 lg:grid-cols-[minmax(380px,460px)_minmax(0,1fr)]">
+        <div className="space-y-2.5">
           {filtered.length === 0 ? (
             <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-sm">
               <p className="text-slate-600">No phrases in this category.</p>
@@ -401,24 +415,35 @@ export default function LearnerLibrary({ learnerProfile, onPracticePhrase }: Pro
               return (
                 <div
                   key={draft.id}
-                  className={`rounded-2xl border bg-white p-4 shadow-sm transition-all hover:shadow-md ${
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => setSelectedPhraseId(draft.phrase_id)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      setSelectedPhraseId(draft.phrase_id);
+                    }
+                  }}
+                  className={`relative rounded-2xl border bg-white p-3.5 shadow-sm transition-all hover:shadow-md ${
                     isSelected
-                      ? "border-slate-400 ring-2 ring-slate-200"
+                      ? "border-blue-300 bg-blue-50/40 ring-1 ring-blue-200"
                       : "border-slate-200 hover:border-slate-300"
                   }`}
                 >
-                  <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                  {isSelected && <div className="absolute inset-y-3 left-0 w-1 rounded-r bg-slate-900" />}
+
+                  <div className="flex flex-col gap-2.5 md:flex-row md:items-start md:justify-between">
                     <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <h2 className="text-lg font-semibold text-slate-900">{draft.phrase_text}</h2>
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <h2 className="text-base font-semibold text-slate-900">{draft.phrase_text}</h2>
                         <span
-                          className={`rounded-full px-2 py-0.5 text-xs font-medium capitalize ${statusBadgeClass[status]}`}
+                          className={`rounded-full px-2 py-0.5 text-xs font-medium capitalize ${getStatusClass(status)}`}
                         >
                           {status}
                         </span>
                       </div>
 
-                      <div className="mt-2 flex flex-wrap gap-2 text-xs">
+                      <div className="mt-1.5 flex flex-wrap gap-1.5 text-xs">
                         {draft.phrase_category && (
                           <span className="rounded-full bg-slate-100 px-2.5 py-1 text-slate-600">
                             {draft.phrase_category}
@@ -439,7 +464,7 @@ export default function LearnerLibrary({ learnerProfile, onPracticePhrase }: Pro
                           (difficultiesByPhrase[draft.phrase_id] ?? []).map((difficulty) => (
                             <span
                               key={difficulty}
-                              className="rounded-full bg-blue-50 px-2.5 py-1 text-blue-700 capitalize"
+                              className={`rounded-full px-2.5 py-1 capitalize ${getDifficultyClass(difficulty)}`}
                             >
                               {difficulty}
                             </span>
@@ -451,7 +476,7 @@ export default function LearnerLibrary({ learnerProfile, onPracticePhrase }: Pro
                         )}
 
                         {progress?.current_difficulty && (
-                          <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-emerald-700 capitalize">
+                          <span className="rounded-full bg-blue-50 px-2.5 py-1 text-blue-700 capitalize">
                             Current {progress.current_difficulty}
                           </span>
                         )}
@@ -462,20 +487,26 @@ export default function LearnerLibrary({ learnerProfile, onPracticePhrase }: Pro
                         )}
                       </div>
 
-                      <p className="mt-3 line-clamp-1 text-sm text-slate-700">{parsed.summary}</p>
+                      <p className="mt-2 line-clamp-1 text-sm text-slate-700">{parsed.summary}</p>
                     </div>
 
-                    <div className="flex w-full flex-row flex-wrap items-center justify-end gap-2 md:w-auto md:min-w-[190px] md:flex-col md:items-stretch">
+                    <div className="flex w-full flex-row flex-wrap items-center justify-end gap-1.5 md:w-auto md:min-w-[168px] md:flex-col md:items-stretch">
                       <button
-                        onClick={() => onPracticePhrase(draft.phrase_id)}
-                        className="rounded-lg bg-slate-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-700"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          onPracticePhrase(draft.phrase_id);
+                        }}
+                        className="rounded-lg bg-slate-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-800"
                       >
                         Practise this
                       </button>
                       {status === "paused" ? (
                         <button
                           disabled={isUpdating}
-                          onClick={() => handleUnpause(draft.phrase_id)}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            handleUnpause(draft.phrase_id);
+                          }}
                           className="rounded-lg bg-emerald-100 px-3 py-1.5 text-sm font-medium text-emerald-800 hover:bg-emerald-200 disabled:opacity-40"
                         >
                           Unpause
@@ -483,35 +514,31 @@ export default function LearnerLibrary({ learnerProfile, onPracticePhrase }: Pro
                       ) : (
                         <button
                           disabled={isUpdating}
-                          onClick={() => handleSetStatus(draft.phrase_id, "paused")}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            handleSetStatus(draft.phrase_id, "paused");
+                          }}
                           className="rounded-lg bg-slate-200 px-3 py-1.5 text-sm font-medium text-slate-800 hover:bg-slate-300 disabled:opacity-40"
                         >
                           Pause
                         </button>
                       )}
-                      <button
-                        onClick={() =>
-                          setSelectedPhraseId((current) =>
-                            current === draft.phrase_id ? null : draft.phrase_id
-                          )
-                        }
-                        className="inline-flex items-center justify-center gap-1 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
-                      >
-                        {isSelected ? "Hide details" : "View details"}
+                      <div className="inline-flex items-center justify-center gap-1 text-xs font-medium text-slate-500">
+                        <span>{isSelected ? "Selected" : "Open details"}</span>
                         <svg
                           viewBox="0 0 20 20"
-                          className={`h-4 w-4 transition-transform ${isSelected ? "rotate-180" : ""}`}
+                          className={`h-4 w-4 transition-transform ${isSelected ? "rotate-180 text-slate-800" : ""}`}
                           fill="none"
                           aria-hidden="true"
                         >
                           <path d="M5 8l5 5 5-5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
                         </svg>
-                      </button>
+                      </div>
                     </div>
                   </div>
 
                   {isSelected && (
-                    <div className="mt-4 border-t border-slate-200 pt-4 lg:hidden">
+                    <div className="mt-3 border-t border-slate-200 pt-3 lg:hidden">
                       <DetailContent draft={draft} progress={progress} />
                     </div>
                   )}
@@ -522,13 +549,13 @@ export default function LearnerLibrary({ learnerProfile, onPracticePhrase }: Pro
         </div>
 
         <aside className="hidden lg:block">
-          <div className="sticky top-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="sticky top-6 min-h-[72vh] rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
             {selectedDraft ? (
               <>
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <p className="text-xs uppercase tracking-wide text-slate-500">Phrase details</p>
-                    <h3 className="mt-1 text-xl font-semibold text-slate-900">
+                    <h3 className="mt-1 text-2xl font-semibold text-slate-950">
                       {selectedDraft.phrase_text}
                     </h3>
                   </div>
@@ -539,7 +566,32 @@ export default function LearnerLibrary({ learnerProfile, onPracticePhrase }: Pro
                     Close
                   </button>
                 </div>
-                <div className="mt-4 max-h-[70vh] overflow-y-auto pr-1">
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <button
+                    onClick={() => onPracticePhrase(selectedDraft.phrase_id)}
+                    className="rounded-lg bg-slate-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-800"
+                  >
+                    Practise this
+                  </button>
+                  {getEffectiveStatus(selectedDraft.phrase_id) === "paused" ? (
+                    <button
+                      disabled={actionLoading === selectedDraft.phrase_id}
+                      onClick={() => handleUnpause(selectedDraft.phrase_id)}
+                      className="rounded-lg bg-emerald-100 px-3 py-1.5 text-sm font-medium text-emerald-800 hover:bg-emerald-200 disabled:opacity-40"
+                    >
+                      Unpause
+                    </button>
+                  ) : (
+                    <button
+                      disabled={actionLoading === selectedDraft.phrase_id}
+                      onClick={() => handleSetStatus(selectedDraft.phrase_id, "paused")}
+                      className="rounded-lg bg-slate-200 px-3 py-1.5 text-sm font-medium text-slate-800 hover:bg-slate-300 disabled:opacity-40"
+                    >
+                      Pause
+                    </button>
+                  )}
+                </div>
+                <div className="mt-5 max-h-[68vh] overflow-y-auto pr-1">
                   <DetailContent
                     draft={selectedDraft}
                     progress={progressMap[selectedDraft.phrase_id]}
@@ -547,7 +599,7 @@ export default function LearnerLibrary({ learnerProfile, onPracticePhrase }: Pro
                 </div>
               </>
             ) : (
-              <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 p-6 text-center">
+              <div className="flex min-h-[60vh] items-center justify-center rounded-xl border border-dashed border-slate-200 bg-slate-50 p-6 text-center">
                 <p className="text-sm text-slate-600">Select a phrase to view full details.</p>
               </div>
             )}
